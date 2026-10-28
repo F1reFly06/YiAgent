@@ -29,3 +29,22 @@
 ### 踩坑
 - Markdown 的 `#` 后必须有空格，否则不渲染成标题
 - 长文档粘贴后要按 `Ctrl+End` 检查末尾，`PROJECT.md` 第一次就断在第 7 节
+
+## 2026-10-28 Day2 收尾Phase 0 + 起步 Phase 1
+
+### 做了
+- 完成 Phase 0：`LICENSE`(MIT)、`pyproject` 的 `license` / `license-files` / `[project.urls]`、`README`
+- 首次提交 `70a2a2a` 并推送到 GitHub（SSH）
+- 配好 Ruff 编辑器扩展 + `.vscode/settings.json`（解释器、src 路径、保存即格式化）
+- 写了`src/yiagent/config.py`: 引入`pydantic_settings`里的`BaseSettings`，自己新建两个子类分别读取`CHAT_*`和`EMBEDDING_*`的环境变量
+- 写了src/yiagent/core/message.py: 定义了枚举'Role`和`Message`类（和Message类下的to_dict()方法)`，这个message.py的作用是数据契约和转换层，将传进来的数据转换为message定义的数据，变成Message类的对象。
+
+### 决策
+- 密钥字段用 `SecretStr` 而不是 `str`：打印显示 `**********`，日志和截图里不会泄露
+- 消息用 `dataclass` 而不是 pydantic：内部构造的数据不需要重校验，更轻
+- `tool_calls` 用 `list[dict[str, object]]` 而不是 `Any`：basedpyright 禁止显式 `Any`，`object` 语义已够
+- `to_dict()` 只输出有值的字段：普通消息带 `tool_calls: null` 会被 API 拒绝
+
+### 踩过的坑
+- `.env` 只认 `KEY=VALUE`，写成冒号这一行会被忽略，字段读不到
+- - PowerShell 的 `Get-Content` 默认按 GBK 解码，看 UTF-8 中文要加 `-Encoding UTF8`

@@ -84,9 +84,9 @@ Phase 1 要建的文件（按依赖顺序）：`config.py`、`logging.py`、`cor
 
 ## 8. 下次接着干的入口
 
-- **当前在**：Phase 1 起点（Phase 0 已完成）
-- **下一步**：写 `config.py` —— 用 pydantic-settings 读 `.env`，拆成 `ChatSettings` / `EmbeddingSettings` 两组
-- **阻塞项**：Phase 1 验收需要真实跑通流式对话，必须先有 DeepSeek 的 API key
+- **当前在**：Phase 1 中段（`config.py` + `core/message.py` 已完成）
+- **下一步**：`core/llm.py` —— 定义 LLMProvider 协议（只声明方法，不实现）
+- **阻塞项**：无
 - **动手前提醒**：改任何东西之前先看第 4 节，不要推翻已定决策
 
 
