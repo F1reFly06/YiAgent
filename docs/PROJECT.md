@@ -51,9 +51,8 @@
 
 | Phase | 内容 | 状态 |
 |---|---|---|
-| 0 | 环境与骨架 | **进行中**：`.gitignore` ✅ / Python 3.12 ✅ / `DEVLOG.md` ✅ / `.env.example` ✅ / `PROJECT.md` ✅ / `pyproject` 配置 ✅ / `README` ⬜ / `LICENSE` ⬜ / 首次提交 ⬜ |
-
-| 1 | 最小流式对话（CLI 能边生成边打印） | 未开始 |
+| 0 | 环境与骨架 | ✅ 已完成（2026-10-28 首次提交并推送到 GitHub） |
+| 1 | 最小流式对话（CLI 能边生成边打印） | **进行中** |
 | 2 | **工具调用循环 ★** | 未开始 |
 | 3 | 会话与持久化 | 未开始 |
 | 4 | RAG 入库与检索 | 未开始 |
@@ -73,20 +72,21 @@ uv.lock               锁定版本（提交）
 .python-version       钉 Python 3.12（提交）
 .gitignore            忽略密钥与 IDE 配置
 .env                  本地真实密钥（不提交）
-README.md             对外说明（待填）
+.env.example          配置模板（值全为假，进 git）
+README.md             对外说明（定位 / 进度 / 开发环境）
+LICENSE               MIT 许可证
 docs/DEVLOG.md        开发日志：每天做了什么、踩了什么坑
 docs/PROJECT.md       本文件：目标 / 决策 / 状态
 src/yiagent/__init__.py   目前只有模板 main()，Phase 1 会改
-.env.example
 ```
 
-待建（按顺序）：`.env.example` → `pyproject` 的 ruff 配置 → `README.md` / `LICENSE` → 首次提交。
+Phase 1 要建的文件（按依赖顺序）：`config.py`、`logging.py`、`core/message.py`、`core/llm.py`、`providers/openai_compat.py`、`prompts/system.md`、`cli/main.py`
 
 ## 8. 下次接着干的入口
 
-- **当前在**：Phase 0，第 6 步（共 7 步）
-- **下一步**：建 `LICENSE`（MIT，署名 `F1reFly06`，年份 2026）→ `pyproject` 加 `license` 字段 → `README.md` → 首次提交
-- **阻塞项**：无。硅基流动的 key 还没申请，不影响 Phase 1–3
+- **当前在**：Phase 1 起点（Phase 0 已完成）
+- **下一步**：写 `config.py` —— 用 pydantic-settings 读 `.env`，拆成 `ChatSettings` / `EmbeddingSettings` 两组
+- **阻塞项**：Phase 1 验收需要真实跑通流式对话，必须先有 DeepSeek 的 API key
 - **动手前提醒**：改任何东西之前先看第 4 节，不要推翻已定决策
 
 

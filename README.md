@@ -53,13 +53,17 @@ Python 3.12 · [uv](https://docs.astral.sh/uv/) · openai SDK（OpenAI 兼容协
 
 ## 开发环境
 
-需要 [uv](https://docs.astral.sh/uv/) 与 Python 3.12。
+需要 [uv](https://docs.astral.sh/uv/)。Python 3.12 由 `.python-version` 指定，`uv` 会自动准备，无需手动安装。
 
 ```bash
-git clone https://github.com/F1reFly06/yiagent.git
-cd yiagent
+git clone https://github.com/F1reFly06/YiAgent.git
+cd YiAgent
 uv sync
-cp .env.example .env    # 填入自己的 API key
+
+# 配置（macOS / Linux / Git Bash）
+cp .env.example .env
+# Windows PowerShell: Copy-Item .env.example .env
+# 然后编辑 .env，填入自己的 API key
 ```
 
 > 目前还没有可运行的命令，Phase 1 完成后补充使用说明。
