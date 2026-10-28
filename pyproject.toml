@@ -1,0 +1,38 @@
+[project]
+name = "yiagent"
+version = "0.1.0"
+description = "A tool-calling chat agent with retrieval over your own Markdown notes"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+
+authors = [
+    { name = "Firefly", email = "316579647+F1reFly06@users.noreply.github.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "openai>=3.39.0",
+    "pydantic-settings>=2.16.1",
+    "rich>=15.0.0",
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+yiagent = "yiagent:main"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
