@@ -84,10 +84,19 @@ Phase 1 要建的文件（按依赖顺序）：`config.py`、`logging.py`、`cor
 
 ## 8. 下次接着干的入口
 
-- **当前在**：Phase 1 中段（`config.py` + `core/message.py` 已完成）
-- **下一步**：`core/llm.py` —— 定义 LLMProvider 协议（只声明方法，不实现）
-- **阻塞项**：无
-- **动手前提醒**：改任何东西之前先看第 4 节，不要推翻已定决策
+- **当前在**：Phase 1，只剩 `prompts/system.md` 和 `cli/main.py`
+- **已完成**：`config.py`（两个 BaseSettings 子类 + 模块级单例 `chat_settings` / `embeddings_settings`）、`core/message.py`（`Role` 枚举 + `Message` dataclass + `to_dict()`）、`core/llm.py`（`LLMProvider` 协议）、`providers/openai_compat.py`（`OpenAICompatProvider.stream` 已实现并真机验证，输出「收到」）
+- **下一步**：`prompts/system.md`（系统提示词）→ `cli/main.py`（typer + rich 流式输出 + 多轮循环）→ 把 `pyproject` 的 `[project.scripts]` 从 `yiagent:main` 改成 `yiagent.cli.main:app`
+- **阻塞项**：无。DeepSeek key 已在 `.env` 里，`chat_settings` 可用
+- **协作约定**：我主写代码，AI 只讲解 / review / 起草文档（见第 3 节）
+
+### 几个已踩过的坑（细节在 DEVLOG）
+
+- `config.py` 只写类不写实例 → `from yiagent.config import chat_settings` 报「未知导入符号」，末尾必须有 `chat_settings = ChatSettings()`
+- basedpyright 会把 `api_key: SecretStr` 这类无默认值字段标红，是误报（运行时由 pydantic-settings 从 `.env` 读），**不要**改成手动传参
+- `openai` SDK 的 `messages` 形参要求 `list[ChatCompletionMessageParam]`，直接传 `list[dict]` 会报类型错，用 `cast` 过去
+- `providers/__init__.py` 保持空文件，不在里面做转发导出
+
 
 
 ## 9. 已知的坑

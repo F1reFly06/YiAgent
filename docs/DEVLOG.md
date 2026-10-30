@@ -48,3 +48,12 @@
 ### 踩过的坑
 - `.env` 只认 `KEY=VALUE`，写成冒号这一行会被忽略，字段读不到
 - - PowerShell 的 `Get-Content` 默认按 GBK 解码，看 UTF-8 中文要加 `-Encoding UTF8`
+
+## 2026-10-29 Day3 继续做Phase 1
+
+### 做了
+- 写了`src/yiagent/core/llm.py`: 这个文件主要是声明接口形状，创建了一个LLMProvider（一个Protocol（协议类）），让providers继承，前者（llm.py不做任何实现，只做声明，后者providers做具体实现）。
+- 写了`src/yiagent/providers/openai_compat.py`: 这个文件是具体实现，继承了LLMProvider，并实现了它，同时也是接触网络的地方。所写类下，__init__是对client的初始化，传入apikey和baseurl，这些都是构建一次反复使用的，所以写入init；建client，这相当于是本地请求的发送端，是发送请求给模型供应商的。stream方法拆开看，`response = self.client.chat.completions.create（）`是发送请求后得到的返回内容的经过处，chunk就是经过response的产物，然后content是对chunk的提取，作为最终输出结果的一部分。
+
+### 踩过的坑
+- 没有对类实例化而直接调用（config.py文件里最后两行是对类进行实例化）
