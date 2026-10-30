@@ -27,3 +27,7 @@ class EmbeddingsSettings(BaseSettings):
     base_url: str
     model: str
     dim: int
+
+
+chat_settings = ChatSettings()  # pyright: ignore[reportCallIssue]
+embeddings_settings = EmbeddingsSettings()   # pyright: ignore[reportCallIssue]
