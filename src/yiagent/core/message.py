@@ -17,7 +17,7 @@ class Message:
     tool_call_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
-        result: dict[str,object] ={}
+        result: dict[str, object] = {}
         result["role"] = str(self.role)
         if self.content is not None:
             result["content"] = self.content
@@ -26,4 +26,3 @@ class Message:
         if self.tool_call_id is not None:
             result["tool_call_id"] = self.tool_call_id
         return result
-    
