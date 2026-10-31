@@ -62,3 +62,15 @@
 
 ###
 - 开发上没有什么进度，把概念弄懂了一下，主要是`src/yiagent/core下的llm.py和openai_compat.py`
+
+## 2026-10-31 Day5 继续做Phase 1, 完成Phase 1
+
+### 做了
+- 写了`src/core/prompts/system.md`作为提示词单独提出来成为一个独立文件, 专门写提示词用。
+- 写了`src/yiagent/prompt.py` 用于加载`src/core/prompts/system.md`的提示词，并被`src/yiagent/cli/main.py`引用。
+- 写了`src/yiagent/cli/main.py`这个是今天所写的主要的内容, 也是Phase1的核心实现, 就是完成对话循环的, main.py文件中，main()函数完成provider和massages的初始化, _chat_loop函数完成输入处理，然后把输入的内容传入messages(Role:USER), 函数_stream_reply拿到messages, 其中的调用provider的stream方法, stream实现网络请求和接收返回值，_stream_reply流式打印返回值(在_chat_loop函数中被调用), 同时_chat_loop函数把这个值完整的存入messages(Role:ASSISTANT)中, 这个过程是循环体, 就是_chat_loop()所做的事情。同时_chat_loop()里也做了清理历史记录，退出，以及请求模型失败等情况的返回值。
+
+### 想写的记录
+- uv run ruff format . 格式化代码
+- uv run ruff check . 检查代码
+- uv run ruff check --fix . 检查代码并自动修复
