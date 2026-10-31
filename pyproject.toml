@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-yiagent = "yiagent:main"
+yiagent = "yiagent.cli.main:app"
 
 [project.urls]
 Repository = "https://github.com/F1reFly06/YiAgent"
