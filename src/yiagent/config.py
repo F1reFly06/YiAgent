@@ -30,4 +30,4 @@ class EmbeddingsSettings(BaseSettings):
 
 
 chat_settings = ChatSettings()  # pyright: ignore[reportCallIssue]
-embeddings_settings = EmbeddingsSettings()   # pyright: ignore[reportCallIssue]
+embeddings_settings = EmbeddingsSettings()  # pyright: ignore[reportCallIssue]
