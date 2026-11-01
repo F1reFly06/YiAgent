@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-10-31 · 当前阶段：Phase 2（工具调用循环）
+> 最后更新：2026-11-01 · 当前阶段：Phase 2（工具调用循环，进行中）
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -84,31 +84,35 @@ docs/PROJECT.md           本文件：目标 / 决策 / 状态
 src/yiagent/__init__.py   空（脚手架残留的 main() 已删）
 src/yiagent/config.py     两个 BaseSettings 子类 + 模块级单例 chat_settings / embedding_settings
 src/yiagent/core/message.py   Role 枚举 + Message dataclass + to_dict()
-src/yiagent/core/llm.py       LLMProvider 协议（唯一的接口契约）
+src/yiagent/core/llm.py       LLMProvider 协议 + 三个事件（TextDelta / ToolCall / Done）
+src/yiagent/core/tools.py     Tool 数据结构 + 两个示例工具 + TOOLS 注册表 + execute_tool
 src/yiagent/core/prompt.py    load_system_prompt()，importlib.resources + lru_cache
 src/yiagent/prompts/system.md 系统提示词（人设 / 能力边界 / 风格 / 不编造）
-src/yiagent/providers/openai_compat.py  OpenAIChatProvider：唯一碰网络的地方
+src/yiagent/providers/openai_compat.py  OpenAIChatProvider：唯一碰网络的地方，产出事件流
 src/yiagent/cli/main.py       typer + rich 入口：_stream_reply / _chat_loop / main 三层
 ```
 
-Phase 2 预计新增：`core/message.py` 加工具调用字段的辅助构造、`core/tools.py`（工具注册表 + 执行分发）、`providers/openai_compat.py` 加 `tools=` 参数与 `tool_calls` 分片拼装、`cli/main.py` 加“工具循环”（一轮可能包含多次请求）。
+Phase 2 已完成（2026-11-01）：`core/llm.py` 出口改为事件流（`Iterator[StreamEvent]`）、`core/tools.py` 工具定义与执行分发（本地验证通过）。
+
+Phase 2 剩余：`providers/openai_compat.py` 传 `tools=`、按 index 累积 `tool_calls`、产出 `ToolCall`；`cli/main.py` 加工具循环（`finish_reason == "tool_calls"` → 执行 → 追加 `role="tool"` 消息 → 再请求，带最大轮数保护）。
 
 ## 8. 下次接着干的入口
 
-- **当前在**：Phase 2（工具调用循环），代码还没动
-- **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可直接流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
-  - `config.py`：两个 BaseSettings 子类 + 模块级单例
-  - `core/message.py`：`Role` + `Message` + `to_dict()`（只输出有值字段）
-  - `core/llm.py`：`LLMProvider` 协议（`stream(messages) -> Iterator[str]`）
-  - `core/prompt.py`：`load_system_prompt()`（`importlib.resources` + `lru_cache`）
-  - `prompts/system.md`：人设 / 能力边界 / 风格 / 不编造
-  - `providers/openai_compat.py`：`OpenAIChatProvider`，把 chunk 收窄成 `str`
-  - `cli/main.py`：三层结构 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
-- **Phase 2 第一步（下次开工从这里开始）**：
-  1. 先想清楚“工具清单怎么传给 `create(tools=...)`”——定义在 `core/tools.py`，用 JSON Schema 描述，**不要让 core 依赖 openai 的类型**
-  2. `Message` 加 `tool_calls` 的写入路径：模型返回时如何把分片拼成完整 JSON
-  3. 改 `providers/openai_compat.py` 的出口：`str` 不够了，要能产出“文本增量 / 工具调用增量”两类事件（建议自定义事件类型，放在 `core/llm.py`）
-  4. `cli/main.py` 增加工具循环：请求 → 若 `finish_reason == "tool_calls"` → 执行工具 → 追加 `role="tool"` 消息 → 再请求
+- **当前在**：Phase 2 中途。接口层和工具层已就绪，**只剩 provider 接上工具 + CLI 加循环**
+- **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
+  - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
+  - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
+- **Phase 2 已完成（2026-11-01）**：
+  - `core/llm.py`：三个冻结 dataclass —— `TextDelta` / `ToolCall(id, name, arguments)` / `Done(finish_reason)`，别名 `StreamEvent`，`LLMProvider.stream` 返回 `Iterator[StreamEvent]`
+  - `providers/openai_compat.py`：循环内 `yield TextDelta`，**循环外 `yield Done`**（异常时不发 Done，用“没发”表达“不完整”）
+  - `cli/main.py`：`for event in ...` + `isinstance(event, TextDelta)` 分流，其余事件暂不处理
+  - `core/tools.py`：`Tool(name, description, parameters, func)`、`get_current_time` / `word_count` 两个工具、`TOOLS` 注册表、`execute_tool()` —— **任何失败都返回错误字符串，绝不抛异常**（让模型能自我纠正）
+- **下次开工（Phase 2 剩余，按顺序做）**：
+  1. `providers/openai_compat.py`：加 `tools=` 参数（把 `TOOLS` 转成 `[{"type": "function", "function": {...}}]`，转换只在这一层做）
+  2. 同文件：遍历 chunk 时按 `tc.index` 分桶累积 `tool_calls` 的 `id` / `name` / `arguments`（arguments 是碎片，必须字符串拼接）
+  3. 同文件：循环结束后 **先** `yield ToolCall(...)`（按 index 排序，`arguments` 用 `json.loads`，空串给 `{}`）**再** `yield Done(...)` —— 顺序错了工具调用会被静默丢弃
+  4. `cli/main.py`：加 `elif isinstance(event, ToolCall)` → `execute_tool()` → 追加 `Message(Role.TOOL, result, tool_call_id=...)` → 再发一次请求；`Done.finish_reason == "tool_calls"` 作为“是否继续”的开关；**必须有最大轮数上限（建议 5～10）防死循环**
+  5. 历史结构：`assistant(tool_calls)` → `tool(result)` → `assistant(最终回答)`，三段不能合并
 - **阻塞项**：无。DeepSeek key 已在 `.env`，`chat_settings` 可用
 - **协作约定**：我主写代码，AI 只讲解 / review / 起草文档（见第 3 节）
 
@@ -123,6 +127,11 @@ Phase 2 预计新增：`core/message.py` 加工具调用字段的辅助构造、
 - 给 `response: Any` 消错是陷阱：`Any` 会向下传播，把 `chunk` / `choices` / `delta` 全变成未知；一条根因（重载匹配失败）会连带出 6 条「类型未知」
 - `Protocol` 覆盖检查**连参数名都要求一致**：`llm.py` 写 `message`、实现写 `messages` → `reportIncompatibleMethodOverride`
 - `rich.console.print` 打印任意文本必须 `markup=False`，否则内容里的 `[` 会被当标记语法（`MarkupError` 或丢字）
+- `@dataclass(forzen=True)` 拼错 → 装饰器没生效 → 连锁报「重载不匹配」「字段未初始化」「装饰器遮蔽类型」共 6 条。**三个相同结构里只有一个报错时，差异就在那一处**
+- `dict.get(k)` 返回 `V | None`，不要手写注解成 `V`（`tool: str = TOOLS.get(name)`）；注解写错会向下传播，后面全红。不确定类型时**先不写注解**
+- 参数名语义错位比类型错误更坑：`execute_tool(tool: str, ...)` 里参数其实是“工具名”，应叫 `name`，否则读代码的人以为传的是对象
+- **JSON Schema 的 `"type"` 拼成 `"type:"` 不会报错**，本地测试也发现不了（`execute_tool` 走的是 `func`，不碰 `parameters`），直到发给模型才暴露：模型不知道参数结构、死活不调用该工具
+- 少了逗号（`parameters={...}` 后直接换行写 `func=`）会引发 SyntaxError，导致整块代码被标红——**报错的行号常常在真正出错处的下一行**
 
 
 
@@ -143,4 +152,8 @@ Phase 2 预计新增：`core/message.py` 加工具调用字段的辅助构造、
 - `/clear` 要用 `del messages[1:]`（保留 index 0 的 system），写成 `messages = []` 只改局部引用、`clear()` 会把人设一起删掉
 - `stream=True` 只改变**响应**方式（SSE 分块），请求体始终是整包，模型无状态、每轮都要重发全部历史
 - `python.analysis.extraPaths` 是 Pylance 的设置，basedpyright 不读它（本项目靠 editable 安装的 `.pth` 解决导入）
+- **空行归 formatter，不归 linter**：`ruff check` 不报空行（`E302`），但 `ruff format` 会修。流程永远是 `ruff check --fix .` **再** `ruff format .`，只跑一个会漏
+- PEP 8 空行只有一句：**顶层定义之间 2 行，类内成员之间 1 行**；文件末尾必须有一个换行符（否则 git diff 出现 `\ No newline at end of file`）
+- `_collections_abc` 是 CPython 私有模块（`collections.abc` 的底层实现），编辑器自动补全常推荐它，**不要用**
+- 事件对象统一 `@dataclass(frozen=True)`：事件是“已发生的事实”，不可变可以防住“有人中途改掉 finish_reason 导致错误被静默吞掉”
 

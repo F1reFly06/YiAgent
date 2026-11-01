@@ -74,3 +74,9 @@
 - uv run ruff format . 格式化代码
 - uv run ruff check . 检查代码
 - uv run ruff check --fix . 检查代码并自动修复
+
+## 2026-11-1 Day6 开始Phase 2
+### 做了
+- 首先改了接口, 原本的stream直出str改成了事件流Event(这个修改位于文件llm.py), 将模型的输出由str变为Event(目前包括TextDelta(模型输出的一小段文字), ToolCall(模型请求一次调用工具), Done(一次请求结束))
+- 同步修改`src/yiagent/providers/openai_compat.py`, yield TextDelta 和循坏外yield Done
+- 新建文件`scr/yiagent/core/tools.py`, 写了Tool数据结构, 写了两个工具, 写了工具注册表, 写了execute_tool(同时包括执行工具和工具使用失败抛出原因而非异常).
