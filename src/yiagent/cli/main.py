@@ -2,7 +2,7 @@ import typer
 from openai import AuthenticationError
 from rich.console import Console
 
-from yiagent.core.llm import LLMProvider
+from yiagent.core.llm import LLMProvider, TextDelta
 from yiagent.core.message import Message, Role
 from yiagent.core.prompt import load_system_prompt
 from yiagent.providers.openai_compat import OpenAIChatProvider
@@ -14,9 +14,10 @@ console = Console()
 def _stream_reply(provider: LLMProvider, messages: list[Message]) -> str:
     """把messages发给模型, 逐块打印, 返回完整回答。不修改messages。"""
     collected = ""
-    for piece in provider.stream(messages):
-        console.print(piece, end="", markup=False)
-        collected += piece
+    for event in provider.stream(messages):
+        if isinstance(event,TextDelta):
+            console.print(event.text,end="",markup=False)
+            collected += event.text
     console.print()
     return collected
 
