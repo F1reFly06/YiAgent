@@ -1,25 +1,85 @@
+import json
+from dataclasses import dataclass, field
+
 import typer
 from openai import AuthenticationError
 from rich.console import Console
 
-from yiagent.core.llm import LLMProvider, TextDelta
+from yiagent.core.llm import Done, LLMProvider, TextDelta, ToolCall
 from yiagent.core.message import Message, Role
 from yiagent.core.prompt import load_system_prompt
+from yiagent.core.tools import execute_tool
 from yiagent.providers.openai_compat import OpenAIChatProvider
 
 app = typer.Typer()
 console = Console()
+MAX_TOOL_ROUNDS = 5
 
 
-def _stream_reply(provider: LLMProvider, messages: list[Message]) -> str:
-    """把messages发给模型, 逐块打印, 返回完整回答。不修改messages。"""
-    collected = ""
+@dataclass
+class _ReplyResult:
+    """一次请求的产出: 文本 / 工具调用 / 结束原因。"""
+
+    text: str = ""
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    finish_reason: str = "stop"
+
+
+def _stream_reply(provider: LLMProvider, messages: list[Message]) -> _ReplyResult:
+    """向模型发起一次请求, 边收边打印文字, 返回本次请求的汇总结果。不修改 messages。"""
+    
+    result = _ReplyResult()
     for event in provider.stream(messages):
-        if isinstance(event,TextDelta):
-            console.print(event.text,end="",markup=False)
-            collected += event.text
-    console.print()
-    return collected
+        if isinstance(event, TextDelta):
+            console.print(event.text, end="", markup=False)
+            result.text += event.text
+        elif isinstance(event, ToolCall):
+            result.tool_calls.append(event)
+        elif isinstance(event, Done):
+            result.finish_reason = event.finish_reason
+    if result.text:
+        console.print()
+    return result
+
+
+def _tool_call_to_dict(tc: ToolCall) -> dict[str, object]:
+    """把内部 ToolCall 转回协议形状, 写回历史时用。"""
+    return {
+        "id": tc.id,
+        "type": "function",
+        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments, ensure_ascii=False)},
+    }
+
+
+def _run_turn(provider: LLMProvider, messages: list[Message]) -> str:
+    """完成一轮提问: 需要时执行工具并再请求, 返回最终回答。异常时回滚本轮追加的消息。"""
+    start = len(messages)
+    last_text = ""
+    try:
+        for _ in range(MAX_TOOL_ROUNDS):
+            result = _stream_reply(provider, messages)
+            last_text = result.text
+            messages.append(
+                Message(
+                    Role.ASSISTANT,
+                    result.text or None,
+                    tool_calls=[_tool_call_to_dict(tc) for tc in result.tool_calls] or None,
+                )
+            )
+
+            if result.finish_reason != "tool_calls" or not result.tool_calls:
+                return result.text
+
+            for tc in result.tool_calls:
+                output = execute_tool(tc.name, tc.arguments)
+                console.print(f"[调用 {tc.name}] {output}", style="dim", markup=False)
+                messages.append(Message(Role.TOOL, output, tool_call_id=tc.id))
+
+        console.print(f"已连续调用工具 {MAX_TOOL_ROUNDS} 轮, 停止本轮", style="yellow")
+        return last_text
+    except Exception:
+        del messages[start:]
+        raise
 
 
 def _chat_loop(provider: LLMProvider, messages: list[Message]) -> None:
@@ -41,7 +101,7 @@ def _chat_loop(provider: LLMProvider, messages: list[Message]) -> None:
 
         messages.append(Message(Role.USER, text))
         try:
-            collected = _stream_reply(provider, messages)
+            _run_turn(provider, messages)
         except AuthenticationError:
             console.print("鉴权失败, 请检查 .env 里的 CHAT_API_KEY")
             break
@@ -49,8 +109,6 @@ def _chat_loop(provider: LLMProvider, messages: list[Message]) -> None:
             console.print(f"请求失败: {exc}")
             messages.pop()
             continue
-
-        messages.append(Message(Role.ASSISTANT, collected))
 
 
 @app.command()
