@@ -7,7 +7,7 @@ from yiagent.core.message import Message
 
 @dataclass(frozen=True)
 class TextDelta:
-    """模型生成的一小段文字（通常1个字）。"""
+    """模型生成的一小段文字(通常1个字)。"""
 
     text: str
 
@@ -27,7 +27,9 @@ class Done:
 
     finish_reason: str
 
+
 StreamEvent = TextDelta | ToolCall | Done
+
 
 class LLMProvider(Protocol):
     """模型提供方的统一接口：任何接入的模型都要满足这个形状。"""

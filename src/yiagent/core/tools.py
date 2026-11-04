@@ -7,15 +7,15 @@ from datetime import datetime
 class Tool:
     """一个可供模型调用的工具。
 
-    name / description / parameters 三样会发给模型看, 
+    name / description / parameters 三样会发给模型看,
     func 只在本地执行, 模型永远看不到。
 
     """
 
     name: str
     description: str
-    parameters: dict[str,object]
-    func: Callable[...,str]
+    parameters: dict[str, object]
+    func: Callable[..., str]
 
 
 def _get_current_time() -> str:
@@ -61,4 +61,3 @@ def execute_tool(name: str, arguments: dict[str, object]) -> str:
         return f"错误: {name} 的参数不正确({exc})"
     except Exception as exc:
         return f"错误: {name} 执行失败({exc})"
-        
