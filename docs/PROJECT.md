@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-11-01 · 当前阶段：Phase 2（工具调用循环，进行中）
+> 最后更新：2026-11-04 · 当前阶段：Phase 3（会话与持久化）未开始
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -53,7 +53,7 @@
 |---|---|---|
 | 0 | 环境与骨架 | ✅ 已完成（2026-10-28 首次提交并推送到 GitHub） |
 | 1 | 最小流式对话（CLI 能边生成边打印） | ✅ 已完成（2026-10-31） |
-| 2 | **工具调用循环 ★** | **进行中** |
+| 2 | **工具调用循环 ★** | ✅ 已完成（2026-11-04） |
 | 3 | 会话与持久化 | 未开始 |
 | 4 | RAG 入库与检索 | 未开始 |
 | 5 | **检索变成工具 ★** | 未开始 |
@@ -62,7 +62,11 @@
 
 ★ = 核心竞争力，其余是支撑。**第 4 周末**即可在简历上写第一段（Phase 0–2）。
 
-实际进度：Phase 0–1 用 5 天完成（2026-10-27 ~ 10-31），比排期提前约 1 周。但后半程难度更高（工具循环的状态机、RAG 的召回质量），**不要按前半程速度外推**。
+实际进度：Phase 0–1 用 5 天完成（2026-10-27 ~ 10-31），Phase 2 用 4 天完成（11-01 ~ 11-04），共 9 天走完前置三个阶段，比排期（4 周末完成 Phase 0–2）提前约 2 周。
+
+Phase 2 内部三步：① 事件流接口 ✅ ② 工具定义与执行 ✅ ③ provider 接工具 + CLI 工具循环 ✅。
+
+但后半程难度更高（RAG 的召回质量、评测集设计），**不要按前半程速度外推**。
 
 ## 7. 目录地图
 
@@ -89,30 +93,37 @@ src/yiagent/core/tools.py     Tool 数据结构 + 两个示例工具 + TOOLS 注
 src/yiagent/core/prompt.py    load_system_prompt()，importlib.resources + lru_cache
 src/yiagent/prompts/system.md 系统提示词（人设 / 能力边界 / 风格 / 不编造）
 src/yiagent/providers/openai_compat.py  OpenAIChatProvider：唯一碰网络的地方，产出事件流
-src/yiagent/cli/main.py       typer + rich 入口：_stream_reply / _chat_loop / main 三层
+src/yiagent/cli/main.py       typer + rich 入口：_chat_loop / _run_turn / _stream_reply 三层 + main 装配
 ```
 
-Phase 2 已完成（2026-11-01）：`core/llm.py` 出口改为事件流（`Iterator[StreamEvent]`）、`core/tools.py` 工具定义与执行分发（本地验证通过）。
-
-Phase 2 剩余：`providers/openai_compat.py` 传 `tools=`、按 index 累积 `tool_calls`、产出 `ToolCall`；`cli/main.py` 加工具循环（`finish_reason == "tool_calls"` → 执行 → 追加 `role="tool"` 消息 → 再请求，带最大轮数保护）。
+Phase 2 完成（2026-11-04）：工具调用闭环打通。provider 侧 `tools=` + 按 `tc.index` 分桶累积 `tool_calls` + 循环外先 `ToolCall` 后 `Done`；CLI 侧 `_run_turn` 工具轮次循环（开关是 `finish_reason == "tool_calls"` **且** `tool_calls` 非空）、三段式历史、`MAX_TOOL_ROUNDS = 5`、异常时 `del messages[start:]` 回滚。
 
 ## 8. 下次接着干的入口
 
-- **当前在**：Phase 2 中途。接口层和工具层已就绪，**只剩 provider 接上工具 + CLI 加循环**
+- **当前在**：Phase 2 已完成（2026-11-04），准备进 Phase 3（会话与持久化，SQLite）
 - **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
   - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
   - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
-- **Phase 2 已完成（2026-11-01）**：
+- **Phase 2 已完成（2026-11-01 ~ 11-04）**：
   - `core/llm.py`：三个冻结 dataclass —— `TextDelta` / `ToolCall(id, name, arguments)` / `Done(finish_reason)`，别名 `StreamEvent`，`LLMProvider.stream` 返回 `Iterator[StreamEvent]`
-  - `providers/openai_compat.py`：循环内 `yield TextDelta`，**循环外 `yield Done`**（异常时不发 Done，用“没发”表达“不完整”）
-  - `cli/main.py`：`for event in ...` + `isinstance(event, TextDelta)` 分流，其余事件暂不处理
   - `core/tools.py`：`Tool(name, description, parameters, func)`、`get_current_time` / `word_count` 两个工具、`TOOLS` 注册表、`execute_tool()` —— **任何失败都返回错误字符串，绝不抛异常**（让模型能自我纠正）
-- **下次开工（Phase 2 剩余，按顺序做）**：
-  1. `providers/openai_compat.py`：加 `tools=` 参数（把 `TOOLS` 转成 `[{"type": "function", "function": {...}}]`，转换只在这一层做）
-  2. 同文件：遍历 chunk 时按 `tc.index` 分桶累积 `tool_calls` 的 `id` / `name` / `arguments`（arguments 是碎片，必须字符串拼接）
-  3. 同文件：循环结束后 **先** `yield ToolCall(...)`（按 index 排序，`arguments` 用 `json.loads`，空串给 `{}`）**再** `yield Done(...)` —— 顺序错了工具调用会被静默丢弃
-  4. `cli/main.py`：加 `elif isinstance(event, ToolCall)` → `execute_tool()` → 追加 `Message(Role.TOOL, result, tool_call_id=...)` → 再发一次请求；`Done.finish_reason == "tool_calls"` 作为“是否继续”的开关；**必须有最大轮数上限（建议 5～10）防死循环**
-  5. 历史结构：`assistant(tool_calls)` → `tool(result)` → `assistant(最终回答)`，三段不能合并
+  - `providers/openai_compat.py`：
+    - `_to_openai_tools()`：协议转换，`__init__` 里装配一次存 `self.tools`（判断标准是「进程内变不变」）；`create()` 带 `tools=`
+    - `_ToolCallDraft`：按 `tc.index` 分桶累积；`id` / `name` 只在首块出现，必须 `if tc.id:` 才赋值；`arguments` 用 `+=` 拼碎片
+    - `_parse_arguments()`：三道兜底（空串 / 畸形 JSON / 非 dict）都返回 `{}`，永不抛异常
+    - 循环外按 index 排序先 `yield ToolCall` 再 `yield Done`（顺序反了工具调用会被静默丢弃；异常时不发 Done）
+  - `cli/main.py` 三层：`_chat_loop`（用户轮次）→ `_run_turn`（工具轮次，**唯一改历史的地方**）→ `_stream_reply`（一次请求，返回 `_ReplyResult`）
+    - `_ReplyResult(text, tool_calls, finish_reason)` 取代裸 `str`：一次请求的产出自带意图，只有 `str` 的话无法区分「不说话只调工具」「出错返回空」「内容被过滤」
+    - 历史三段式：`assistant(tool_calls)` → `tool(结果)` → `assistant(最终回答)`
+    - `_tool_call_to_dict()`：`arguments` 用 `json.dumps(ensure_ascii=False)` 转回字符串写进历史
+    - 继续条件：`finish_reason == "tool_calls"` **且** `tool_calls` 非空；`MAX_TOOL_ROUNDS = 5`
+    - 异常时 `del messages[start:]` 回滚本轮，`_chat_loop` 再 `pop()` 用户消息（两层各删各的）
+- **Phase 3 建议的第一步**（尚未开始，先讨论再动手）：
+  1. 定表结构：`sessions(id, created_at, title)` + `messages(id, session_id, seq, role, content, tool_calls, tool_call_id)`；`tool_calls` 存 JSON 字符串（SQLite 没有数组类型），`content` 必须允许 `NULL`
+  2. `core/store.py` 只暴露五个函数：`init_db` / `create_session` / `append_messages` / `load_session` / `list_sessions`，**CLI 不碰 SQL**，换库只改一个文件
+  3. 写时机选「回合结束批量写」：`_run_turn` 已有 `start`，成功后写 `messages[start:]`，失败时已回滚、天然不写
+  4. 注意：SQLite 外键**默认关闭**，每次连接要 `PRAGMA foreign_keys = ON`；时间用 ISO 8601 文本（排序天然正确、可读）
+- **未验证的技术债**：`MAX_TOOL_ROUNDS` 超限分支、`del messages[start:]` 回滚分支从未执行过，等 Phase 3 引入 pytest 后补测
 - **阻塞项**：无。DeepSeek key 已在 `.env`，`chat_settings` 可用
 - **协作约定**：我主写代码，AI 只讲解 / review / 起草文档（见第 3 节）
 
@@ -131,9 +142,11 @@ Phase 2 剩余：`providers/openai_compat.py` 传 `tools=`、按 index 累积 `t
 - `dict.get(k)` 返回 `V | None`，不要手写注解成 `V`（`tool: str = TOOLS.get(name)`）；注解写错会向下传播，后面全红。不确定类型时**先不写注解**
 - 参数名语义错位比类型错误更坑：`execute_tool(tool: str, ...)` 里参数其实是“工具名”，应叫 `name`，否则读代码的人以为传的是对象
 - **JSON Schema 的 `"type"` 拼成 `"type:"` 不会报错**，本地测试也发现不了（`execute_tool` 走的是 `func`，不碰 `parameters`），直到发给模型才暴露：模型不知道参数结构、死活不调用该工具
+- `function` 拼成 `fuction`（`"type"` 的值和外层键各错一处）与上一条同类：`cast` 零运行时检查、`ruff` 也查不出，只有离线 `json.dumps` 打印一眼能发现。**改完协议结构先打印序列化结果**
+- **`cast` 是类型担保不是转换**：运行时原样返回、零检查，写错了当场不报，要等很久以后才炸。用之前先用 `isinstance` 验掉能验的部分
+- **F841「赋值给未使用变量」先别删赋值**：多半是漏了下游消费代码（比如漏了 `yield Done(finish_reason=...)`）。用 `--unsafe-fixes` 改成 `pass` 会让功能静默失效、且不报任何错
+- 给返回值标 `Any` 消红最贵：`execute_tool` 明明是 `-> str`，标成 `Any` 会让 `Message(content=...)` 一并变成 Unknown，一路污染。**补 import 修根因**才对
 - 少了逗号（`parameters={...}` 后直接换行写 `func=`）会引发 SyntaxError，导致整块代码被标红——**报错的行号常常在真正出错处的下一行**
-
-
 
 ## 9. 已知的坑
 

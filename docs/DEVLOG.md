@@ -84,3 +84,45 @@
 ## 2026-11-2 Day7 继续Phase 2
 ### 做了
 - 写了一点openai_compat.py 的代码, 主要是为工具参数发给模型做格式适配。
+
+## 2026-11-3 Day8 继续Phase 2
+### 做了
+- 把昨天没写完的`openai_compat.py ` 的代码补完了，在这里具体说明。首先写了`_to_openai_tools()`: 把`TOOLS`翻译成符合openaiSDK的形式。
+- 写了`_ToolCallDraft`(`openai_compat.py`里): 储存工具调用的草稿, 后面让chunk从response中提取并赋值(id,name,arguments赋值给draft, 用一个字典接收, 字典键值从0开始, draft.id对应的是response里的具体的id, 通过这个id去定位具体的工具)
+- 写了`_parse_arguments`(同为`openai_compat.py`里), 作用是将模型返回的JSON格式解析为dict(), 用于后续再次发给模型, 供模型阅读调取工具。
+
+## 想写的记录
+- cast 是 typing 模块的一个函数, 作用是向静态检查器声明某个值的类型, 对应值则原封不动返回, 告诉检查器把这个值当作目标类型(cast声明的)来处理。
+
+## 2026-11-4 Day9 结束Phase 2
+### 做了
+- 主要完成了`cli/main.py` 的代码, 实现命令行的完成, 同时对main.py进行了修改, 新写了一个dataclass类, 这个的作用是代替原先stream请求模型的产出物, 原先是str一段文本, 现在是_ReplyResult, 包括文本, 工具调用, 结束原因。
+- 修改`_stream_reply`(`cli/main.py`), 让它不仅从能输出文本, 变为按照StreamEvent事件分流, 分别从provider.stream()中获取到TextDelta, ToolCall, Done, 分别对应文本, 工具调用, 结束原因。如果是文本则直接输出(result.text(由event.text累加而成))
+- 写`_tool_call_to_dict`(`cli/main.py`), 作用是将内部ToolCall转化为协议dict(), 写回历史用。
+- 写 `_run_turn`（`cli/main.py`），这是工具调用的核心流程，返回模型最终的答案文本。
+  注意：工具执行结果**不从**这里返回，它是作为 `role="tool"` 消息进历史，
+  等下一次请求随整份历史带给模型。（打印也归它管——它调用 `_stream_reply`。）
+
+  设定最大轮数（`MAX_TOOL_ROUNDS = 5`）后进入循环，每一轮：
+  1. 用 `_stream_reply` 发一次请求，拿回文本 / 工具调用 / finish_reason
+  2. 把这一轮的 assistant 消息写进历史（有工具调用就带 tool_calls，没有就带文本）
+  3. 判断要不要继续——**只有** `finish_reason == "tool_calls"` 且 `tool_calls` 非空才继续，
+     其它情况（`stop` / `length` / 列表为空）一律 return
+  4. 要继续时，遍历每个 ToolCall，用它的 name 和 arguments 调 `execute_tool`，
+     把返回的字符串追加成 `role="tool"` 消息（带 `tool_call_id`）
+  5. 回到循环顶部再请求一次，让模型看到工具结果
+
+### 决策
+- 历史必须三段式：`assistant(tool_calls)` → `tool(结果)` → `assistant(最终回答)`，
+  三段不能合并。原因是模型无状态，每次请求都要把整份历史重发，服务端靠 `tool_call_id`
+  把结果和调用配对
+- 继续循环的条件是 `finish_reason == "tool_calls"` **且** `tool_calls` 非空。
+  双条件：只判前者，遇到“声称要调工具但列表为空”会空转 5 轮
+- 工具结果不是单独“发”给模型的，只是 append 进 `messages`，等下一次请求随整份历史带过去
+- 最大轮数 5 轮，超限不抛异常（历史此刻是合法的，下一轮还能用）
+- 异常时 `del messages[start:]` 回滚本轮追加的全部消息，`_chat_loop` 再 `pop()` 掉用户消息，
+- `_stream_reply` 的返回值从 `str` 改成 `_ReplyResult`（text / tool_calls / finish_reason）。
+  原因不是“字段变多了”，而是一次请求的产出**自带意图**：text 给用户看，tool_calls 用来执行，
+  finish_reason 用来判断要不要再请求一次。如果只返回 str，`_run_turn` 就只能靠“文本是否为空”
+  猜——而“模型不说话只调工具”“请求出错返回空”“内容被过滤”这三种情况在 str 里无法区分。
+  这和 provider 层 `Iterator[str]` → `Iterator[StreamEvent]` 是同一种演进：从单一值变成复合值
