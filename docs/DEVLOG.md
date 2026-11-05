@@ -126,3 +126,12 @@
   finish_reason 用来判断要不要再请求一次。如果只返回 str，`_run_turn` 就只能靠“文本是否为空”
   猜——而“模型不说话只调工具”“请求出错返回空”“内容被过滤”这三种情况在 str 里无法区分。
   这和 provider 层 `Iterator[str]` → `Iterator[StreamEvent]` 是同一种演进：从单一值变成复合值
+
+
+## 2026-11-5 Day10 开始Phase 3
+### 做了
+-建`src/yiagent/core/session_store.py`, 这个文件主要是承担建库的任务, 今天写了一部分, 首先是写出数据库的结构, session 和 message, 两个表。两个方法, 一个连接方法connect, 一个建库方法init_db。跑通了测试。
+
+### 决策
+- schema 写成py文件而不是sql, 因为py相比于sql规模小, 省去了打包配置。
+- 加 `seq` 列表达会话内顺序，不复用 `id`(id 只是物理标识)
