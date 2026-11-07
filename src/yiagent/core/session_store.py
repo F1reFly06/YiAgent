@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -39,5 +40,19 @@ def init_db(db_path: str) -> None:
     try:
         conn.executescript(_SCHEMA)
         conn.commit()
+    finally:
+        conn.close()
+
+
+def create_session(db_path: str, title: str | None = None) -> int:
+    """新建一个会话, 返回新会话的id。"""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO sessions (created_at, title) VALUES (?, ?)",
+            (datetime.now(UTC).isoformat(timespec="seconds"), title),
+        )
+        conn.commit()
+        return int(cur.lastrowid or 0)
     finally:
         conn.close()
