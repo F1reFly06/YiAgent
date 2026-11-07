@@ -135,3 +135,9 @@
 ### 决策
 - schema 写成py文件而不是sql, 因为py相比于sql规模小, 省去了打包配置。
 - 加 `seq` 列表达会话内顺序，不复用 `id`(id 只是物理标识)
+
+## 2O26-11-6 Day11 休息一天orz
+
+## 2026-11-7 Day12 继续Phase 3
+### 做了
+- 写了`src/yiagent/core/session_store.py`的一个方法, create_session, 这个方法是创建一个会话, 并返回会话的id。参数化INSERT进入本地数据库。
