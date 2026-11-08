@@ -141,3 +141,11 @@
 ## 2026-11-7 Day12 继续Phase 3
 ### 做了
 - 写了`src/yiagent/core/session_store.py`的一个方法, create_session, 这个方法是创建一个会话, 并返回会话的id。参数化INSERT进入本地数据库。
+
+## 2026-11-8 Day13 继续Phase 3
+### 做了
+- 写了`src/yiagent/core/session_store.py(append_message)`, `src/yiagent/core/session_store.py(load_session)`两个函数, 前者的作用是当一轮对话结束, 把这一轮的消息存入数据库做本地持久化保存。后者的作用是读取数据库的对话历史数据, 用seq顺序加载对话历史,是对话开始的初始化的最后一步(目前所写的内容)。
+
+### 注意事项
+- 长 SQL 超 100 字符（`line-length = 100`）分行写时，用 `+` 显式拼接，不要用相邻字符串的隐式拼接——隐式拼接会掩盖「少逗号」这类 bug（两个字符串被静默连成一个），basedpyright 也会报 `reportImplicitStringConcatenation`；另外拼接处的空格要自己补，`"…FROM messages"` + `" WHERE…"` 两边只留一个空格，都漏会拼成 `messagesWHERE`。`+` 拼接在编译期折叠成常量，运行时零开销
+

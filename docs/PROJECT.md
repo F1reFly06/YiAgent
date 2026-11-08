@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-11-05 · 当前阶段：Phase 3（会话与持久化）进行中
+> 最后更新：2026-11-08 · 当前阶段：Phase 3（会话与持久化）进行中，存储层已完成、待接入 CLI
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -35,6 +35,8 @@
 | 向量库（后续） | 视情况换 chromadb | `core/vector_store.py`（拟）只有 add/search 两个方法，换库只改一个文件 |
 | 会话持久化 | SQLite（Phase 3 引入） | 比 JSON 文件能讲事务和索引，比 Postgres 轻 |
 | 会话持久化模块命名 | `core/session_store.py` | 原名 `store.py` 与上一条「向量库 store」撞名，同一个词指两个东西；加前缀后两文件各表一职，读代码不用猜 |
+| `system` 消息是否入库 | **不入库**，每次启动用 `load_system_prompt()` 现生成 | prompt 会反复修改，存进库就是旧版本、改了不生效；库里只留真实对话（user / assistant / tool） |
+| 会话续接策略 | 默认**继续上次**：`latest_session()` 找到就复用，找不到才 `create_session()` | 每次新建会让 `load_session` 永远返回空列表，持久化等于白做 |
 | RAG 接入方式 | 做成 `knowledge_search` **工具** | 让模型自主决定何时检索（agentic RAG），这是核心亮点 |
 | 知识库语料 | 自己的 Markdown 笔记 | 切块按标题层级切，质量最好控 |
 | 交付形态 | CLI 优先，Phase 7 加 FastAPI + Web | 核心与入口分离，加 Web 时核心不改 |
@@ -55,7 +57,7 @@
 | 0 | 环境与骨架 | ✅ 已完成（2026-10-28 首次提交并推送到 GitHub） |
 | 1 | 最小流式对话（CLI 能边生成边打印） | ✅ 已完成（2026-10-31） |
 | 2 | **工具调用循环 ★** | ✅ 已完成（2026-11-04） |
-| 3 | 会话与持久化 | 🔨 进行中（2026-11-05 开始，Day10） |
+| 3 | 会话与持久化 | 🔨 进行中（2026-11-05 起；存储层四个函数已完成，未接入 CLI） |
 | 4 | RAG 入库与检索 | 未开始 |
 | 5 | **检索变成工具 ★** | 未开始 |
 | 6 | 评测集 | 未开始 |
@@ -67,7 +69,7 @@
 
 Phase 2 内部三步：① 事件流接口 ✅ ② 工具定义与执行 ✅ ③ provider 接工具 + CLI 工具循环 ✅。
 
-Phase 3 从 2026-11-05（Day10）开始，当天完成建表 + 三个读写函数骨架，尚未接入 `cli/main.py`。
+Phase 3 从 2026-11-05（Day10）开始：Day10 建表，Day12（11-07）写 `create_session`，Day13（11-08）写 `append_message` + `load_session` 并端到端验证通过。**尚未接入 `cli/main.py`，也还没有 `latest_session`。**
 
 但后半程难度更高（RAG 的召回质量、评测集设计），**不要按前半程速度外推**。
 
@@ -95,7 +97,7 @@ src/yiagent/core/message.py   Role 枚举 + Message dataclass + to_dict()
 src/yiagent/core/llm.py       LLMProvider 协议 + 三个事件（TextDelta / ToolCall / Done）
 src/yiagent/core/tools.py     Tool 数据结构 + 两个示例工具 + TOOLS 注册表 + execute_tool
 src/yiagent/core/prompt.py    load_system_prompt()，importlib.resources + lru_cache
-src/yiagent/core/session_store.py  会话持久化：_SCHEMA（sessions / messages）+ _connect + init_db；**全项目唯一写 SQL 的地方**（create_session / append_message / load_messages 待写）
+src/yiagent/core/session_store.py  会话持久化：_SCHEMA（sessions / messages）+ _connect + init_db + create_session / append_message / load_session；**全项目唯一写 SQL 的地方**（`latest_session` 待写）
 src/yiagent/prompts/system.md 系统提示词（人设 / 能力边界 / 风格 / 不编造）
 src/yiagent/providers/openai_compat.py  OpenAIChatProvider：唯一碰网络的地方，产出事件流
 src/yiagent/cli/main.py       typer + rich 入口：_chat_loop / _run_turn / _stream_reply 三层 + main 装配
@@ -103,12 +105,12 @@ src/yiagent/cli/main.py       typer + rich 入口：_chat_loop / _run_turn / _st
 
 Phase 2 完成（2026-11-04）：工具调用闭环打通。provider 侧 `tools=` + 按 `tc.index` 分桶累积 `tool_calls` + 循环外先 `ToolCall` 后 `Done`；CLI 侧 `_run_turn` 工具轮次循环（开关是 `finish_reason == "tool_calls"` **且** `tool_calls` 非空）、三段式历史、`MAX_TOOL_ROUNDS = 5`、异常时 `del messages[start:]` 回滚。
 
-Phase 3 进行中（2026-11-05 起）：`core/session_store.py` **只有建表这一层**（`_SCHEMA` + `_connect` + `init_db`），读写函数（`create_session` / `append_message` / `load_messages`）尚未写，也未接入 CLI。表结构 `sessions(id, created_at, title)` / `messages(id, session_id, seq, role, content, tool_calls, tool_call_id)` + 索引 `idx_messages_session_seq`；`_connect()` 统一做 `PRAGMA foreign_keys = ON` 和 `row_factory = sqlite3.Row`。
+Phase 3 进行中（2026-11-05 起）：`core/session_store.py` 的存储层已完成 —— `_connect` / `init_db` / `create_session` / `append_message` / `load_session`，端到端验证通过（写 4 条读回顺序正确、`tool_calls` 还原成 `list`、不存在的会话返回 `[]`、中文正常）。**待写 `latest_session`，尚未接入 `cli/main.py`。** 表结构 `sessions(id, created_at, title)` / `messages(id, session_id, seq, role, content, tool_calls, tool_call_id)` + 索引 `idx_messages_session_seq`；`_connect()` 统一做 `PRAGMA foreign_keys = ON` 和 `row_factory = sqlite3.Row`。
 
 ## 8. 下次接着干的入口
 
-- **当前在**：Phase 3（会话与持久化）进行中，**卡在「建表已完成，读写函数未写」这一步**。`core/session_store.py` 只有 `_SCHEMA` / `_connect` / `init_db`，能建库建表，但不会写也不会读一条数据
-- **明天的第一件事**：写 `create_session()` —— 只写这一个函数，写完 review 再继续 `append_message`
+- **当前在**：Phase 3 进行中。`core/session_store.py` 的存储层已完成并验证（`_connect` / `init_db` / `create_session` / `append_message` / `load_session`），**但 `cli/main.py` 一行都还没引用它**——现在跑 `uv run yiagent`，历史依然不落库
+- **下次第一件事**：写 `latest_session(db_path) -> int | None`，然后立刻接入 `main.py`（详细清单见本节后面「接入 `main.py` 的三步」）
 - **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
   - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
   - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
@@ -135,19 +137,21 @@ Phase 3 进行中（2026-11-05 起）：`core/session_store.py` **只有建表�
   - 起因：AI 曾顺着上下文补完 `create_session` / `append_message` / `load_messages`，与第 3 节「代码由我主写」冲突，已回退（commit `d90636d`）
   - 现在的分工：**AI 只给接口设计和坑点，函数体我自己敲，写完再让 AI review**
   - 理由：`lastrowid` 的类型、ISO 时间能不能被 `fromisoformat()` 解析回来、异常路径漏没漏 `close`，这些自己写一遍才记得住
-- **`create_session` 的设计已定（明天照着写，接口层）**：
-  - 签名 `create_session(db_path: str, title: str | None = None) -> int`
-  - 传 `db_path` 不传 `conn`：与 `init_db` 一致，函数自己管连接，避免「该谁 commit」的歧义
-  - 返回 `int`（新会话 id）而不是 `Session` 对象：现阶段调用方只要一个数字，等做 `list_sessions` 时再引入 dataclass
-  - 函数体四步：`_connect()` → 参数化 `INSERT INTO sessions (created_at, title) VALUES (?, ?)` → `commit()` → `return int(cur.lastrowid or 0)`
-  - `created_at` 必须显式给值（`NOT NULL`），取 `datetime.now(UTC).isoformat(timespec="seconds")`，import 是 `from datetime import UTC, datetime`
-- **三个已定的小决定**：
-  1. 时间不用 `datetime.utcnow()`（已废弃且返回 naive），也不用 SQLite 的 `CURRENT_TIMESTAMP`（无时区、空格分隔，和 ISO 8601 不统一）
-  2. 不用 `with sqlite3.connect(...) as conn`：那是**事务上下文**，退出时 commit 但**不关闭连接**
-  3. 表不存在就让 `sqlite3.OperationalError: no such table` 报出来，不在 `create_session` 里隐式调 `init_db`；建表归启动装配阶段管
-- **Phase 3 后续顺序**：`create_session` → `append_message`（`seq` 取 `COALESCE(MAX(seq),0)+1`）→ `load_messages`（`ORDER BY seq`、`role` 转 `Role`、`tool_calls` 走 `json.loads`）→ 接入 `main.py` 三行（`init_db` → 建/取会话 → `load_messages` 结果直接当 `messages`）
-- **仍待定**：「继续上次会话」走 `latest_session()` 自动续（`ORDER BY id DESC LIMIT 1`）还是 CLI 参数 `--session <id>`；写时机仍是「`_run_turn` 成功后写 `messages[start:]`，失败已回滚、天然不写」
-- **函数数量与原计划的偏差**（有意为之）：`append_messages`（批量）改成 `append_message`（单条），`load_session` 拆成 `load_messages` —— 逐条写可以边聊边存，不必等一整轮结束；`list_sessions` 暂缓，等真需要「会话列表 / 继续上次」时再加
+- **Phase 3 存储层已完成（2026-11-05 ~ 11-08）**：
+  - `create_session(db_path, title=None) -> int`：`_connect` → 参数化 INSERT → `commit` → `int(cur.lastrowid or 0)`；`created_at` 用 `datetime.now(UTC).isoformat(timespec="seconds")`
+  - `append_message(db_path, session_id, message) -> None`：先 `SELECT COALESCE(MAX(seq),0) AS last_seq`，再 INSERT 六列；`tool_calls` 走 `json.dumps(ensure_ascii=False)`，`role` 显式 `str(...)`，`seq` 由函数内部算，调用方不维护
+  - `load_session(db_path, session_id) -> list[Message]`：`WHERE session_id=? ORDER BY seq` + `fetchall()`，`Role(row["role"])` 反查、`json.loads` 还原 `tool_calls`
+  - 三者签名统一传 `db_path` 不传 `conn`；都不在内部隐式调 `init_db`（表不存在就让它报错）
+- **命名上的小瑕疵（暂不改）**：函数叫 `load_session`，返回的却是 `list[Message]`。等以后要加“读会话元信息（标题/时间）”时再统一改成 `load_messages`
+- **与计划的偏差**：`append_messages`（批量）改成 `append_message`（单条）——逐条写逻辑最直白，一轮 3 条就开 3 次连接，本地 SQLite 可忽略；`list_sessions` 暂缓到做“选择会话”时再加
+- **接入 `main.py` 的三步（下次动手，先讨论再改）**：
+  1. 顶部 `from yiagent.core import session_store` + `DB = "data/yiagent.db"`
+  2. `main()`：`init_db(DB)` → `sid = latest_session(DB)`，为 `None` 才 `create_session(DB)` → `history = load_session(DB, sid)` → `messages = [Message(Role.SYSTEM, load_system_prompt()), *history]`
+  3. `_chat_loop` / `_run_turn` 各多一个 `sid` 参数；`_run_turn` 的 `finally:` 里 `for m in messages[start:]: append_message(DB, sid, m)` —— 失败时 `del messages[start:]` 已清空，循环自然不进
+- **接入时必须一起处理的三件事**：
+  1. `system` 不入库，`load_session` 返回的历史里没有 system，要在 `main()` 里手动拼到最前面（决策见第 4 节）
+  2. `/clear` 只清内存（`del messages[1:]`），库里旧消息还在，清完继续聊会接着原 `seq` 往后排 —— 要么接受，要么让 `/clear` 顺带换一个新会话
+  3. 以后裁剪历史必须按“轮”切（以 `Role.USER` 为界），不能按条数切：切在 `assistant(tool_calls)` 与 `tool` 之间会产生孤儿消息，下次请求直接 400
 - **未验证的技术债**：`MAX_TOOL_ROUNDS` 超限分支、`del messages[start:]` 回滚分支从未执行过，等 Phase 3 引入 pytest 后补测
 - **阻塞项**：无。DeepSeek key 已在 `.env`，`chat_settings` 可用
 - **协作约定**：我主写代码，AI 只讲解 / review / 起草文档（见第 3 节）
@@ -178,6 +182,10 @@ Phase 3 进行中（2026-11-05 起）：`core/session_store.py` **只有建表�
 - **改名成功的标志是状态里的 `R`**（rename），不是 `D` + `A`。git 按内容哈希存对象、文件名只是索引，`git mv` 后能自动识别，`git log --follow` 可穿透改名追溯历史
 - `cur.lastrowid` 类型是 `int | None`（只有新增行才有值），basedpyright 会报；写 `int(cur.lastrowid or 0)` 比 `cast` 稳（**写 `create_session` 时就会碰到**）
 - `datetime.utcnow()` 已废弃且返回 **naive** 时间；统一用 `datetime.now(UTC).isoformat(timespec="seconds")`，这样 `datetime.fromisoformat()` 能原样解析回来，也不会混进本地时区
+- **单元素元组必须写 `(x,)`**：逗号才是元组的标志，`(x)` 只是括号。`conn.execute(sql, 5)` 报 `Parameters are of unsupported type`；更坑的是传字符串——`conn.execute(sql, "abc")` 会被逐字符拆成 3 个参数，报 `The current statement uses 1, and there are 3 supplied`
+- **`fetchone()` / `fetchall()` 在 typeshed 里返回 `Any`**（`row_factory` 可换，类型无法静态确定），所以 `row["col"]` 全是 `Any`，会连带报一片 `reportAny`。给 `row` 加注解也没用（`Row.__getitem__` 同样返回 `Any`）——**这是库的类型洞，别为消警告写畸形代码**
+- **关键字实参少一个逗号会报「括号未闭合」**：`tool_calls=... else None` 后面漏逗号直接接下一行 `tool_call_id=...`，basedpyright 报的是 `[` 未闭合、`(` 未闭合，还连带「rows 未使用」「返回类型未知」。**报错位置在真正出错处的上一行，先看上一行行尾**
+- **长 SQL 超 `line-length = 100` 分行时用 `+` 显式拼接**：隐式拼接（相邻字符串）会掩盖「少逗号」这类 bug，basedpyright 报 `reportImplicitStringConcatenation`；拼接处空格要自己补，`"…FROM messages"` + `" WHERE…"` 两边只留一个，都漏会拼成 `messagesWHERE`
 
 ## 9. 已知的坑
 
