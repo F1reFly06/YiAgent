@@ -27,7 +27,7 @@ class _ReplyResult:
 
 def _stream_reply(provider: LLMProvider, messages: list[Message]) -> _ReplyResult:
     """向模型发起一次请求, 边收边打印文字, 返回本次请求的汇总结果。不修改 messages。"""
-    
+
     result = _ReplyResult()
     for event in provider.stream(messages):
         if isinstance(event, TextDelta):
