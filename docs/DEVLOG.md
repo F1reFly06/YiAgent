@@ -149,3 +149,7 @@
 ### 注意事项
 - 长 SQL 超 100 字符（`line-length = 100`）分行写时，用 `+` 显式拼接，不要用相邻字符串的隐式拼接——隐式拼接会掩盖「少逗号」这类 bug（两个字符串被静默连成一个），basedpyright 也会报 `reportImplicitStringConcatenation`；另外拼接处的空格要自己补，`"…FROM messages"` + `" WHERE…"` 两边只留一个空格，都漏会拼成 `messagesWHERE`。`+` 拼接在编译期折叠成常量，运行时零开销
 
+## 2026-11-9 Day14 完成Phase 3
+### 做了
+- 完善`src/yiagent/core/session_store.py`, 补全最后一个函数lastest_session, 用于调取最近一次的会话。
+- 修改`src/yiagent/cli/main.py`, 新写函数save_new_messages, 用于本轮对话结束后将新增消息存入sql, 修改run_turn, 让在`src/yiagent/core/session_store.py`写的函数在cli中生效, 包括写入数据库, 读取数据库等。
