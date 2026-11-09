@@ -59,6 +59,16 @@ def create_session(db_path: str, title: str | None = None) -> int:
         conn.close()
 
 
+def latest_session(db_path: str) -> int | None:
+    """返回最近一次会话的id; 一条会话都没有的时候返回 None。"""
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT id FROM sessions ORDER BY id DESC LIMIT 1").fetchone()
+        return int(row["id"]) if row is not None else None
+    finally:
+        conn.close()
+
+
 def append_message(db_path: str, session_id: int, message: Message) -> None:
     """把一条消息追加到会话末尾, seq自动递增。"""
     conn = _connect(db_path)
@@ -92,10 +102,10 @@ def load_session(db_path: str, session_id: int) -> list[Message]:
     try:
         rows = conn.execute(
             "SELECT role, content, tool_calls, tool_call_id FROM messages"
-            + " WHERE session_id = ? ORDER BY seq", 
+            + " WHERE session_id = ? ORDER BY seq",
             (session_id,),
         ).fetchall()
-        return[
+        return [
             Message(
                 role=Role(row["role"]),
                 content=row["content"],
