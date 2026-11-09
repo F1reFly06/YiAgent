@@ -1,10 +1,12 @@
 import json
+import sqlite3
 from dataclasses import dataclass, field
 
 import typer
 from openai import AuthenticationError
 from rich.console import Console
 
+from yiagent.core import session_store
 from yiagent.core.llm import Done, LLMProvider, TextDelta, ToolCall
 from yiagent.core.message import Message, Role
 from yiagent.core.prompt import load_system_prompt
@@ -14,6 +16,7 @@ from yiagent.providers.openai_compat import OpenAIChatProvider
 app = typer.Typer()
 console = Console()
 MAX_TOOL_ROUNDS = 5
+DB = "data/yiagent.db"
 
 
 @dataclass
@@ -29,8 +32,12 @@ def _stream_reply(provider: LLMProvider, messages: list[Message]) -> _ReplyResul
     """向模型发起一次请求, 边收边打印文字, 返回本次请求的汇总结果。不修改 messages。"""
 
     result = _ReplyResult()
+    started = False
     for event in provider.stream(messages):
         if isinstance(event, TextDelta):
+            if not started:
+                console.print("Yi: ", end="", style="bold cyan")
+                started = True
             console.print(event.text, end="", markup=False)
             result.text += event.text
         elif isinstance(event, ToolCall):
@@ -51,9 +58,18 @@ def _tool_call_to_dict(tc: ToolCall) -> dict[str, object]:
     }
 
 
-def _run_turn(provider: LLMProvider, messages: list[Message]) -> str:
+def _save_new_messages(new_messages: list[Message], session_id: int) -> None:
+    """把本轮新增的消息写入 SQLite。写失败只警告, 不打断已经完成的对话"""
+    for message in new_messages:
+        try:
+            session_store.append_message(DB, session_id, message)
+        except sqlite3.Error as exc:
+            console.print(f"[写入历史失败] {exc}", style="yellow", markup=False)
+            return
+
+
+def _run_turn(provider: LLMProvider, messages: list[Message], session_id: int, start: int) -> str:
     """完成一轮提问: 需要时执行工具并再请求, 返回最终回答。异常时回滚本轮追加的消息。"""
-    start = len(messages)
     last_text = ""
     try:
         for _ in range(MAX_TOOL_ROUNDS):
@@ -80,9 +96,11 @@ def _run_turn(provider: LLMProvider, messages: list[Message]) -> str:
     except Exception:
         del messages[start:]
         raise
+    finally:
+        _save_new_messages(messages[start:], session_id)
 
 
-def _chat_loop(provider: LLMProvider, messages: list[Message]) -> None:
+def _chat_loop(provider: LLMProvider, messages: list[Message], session_id: int) -> None:
     while True:
         try:
             text = console.input("你: ").strip()
@@ -98,27 +116,40 @@ def _chat_loop(provider: LLMProvider, messages: list[Message]) -> None:
             del messages[1:]
             console.print("已清空历史")
             continue
-
+        
+        start = len(messages)
         messages.append(Message(Role.USER, text))
         try:
-            _run_turn(provider, messages)
+            _run_turn(provider, messages, session_id,start)
         except AuthenticationError:
             console.print("鉴权失败, 请检查 .env 里的 CHAT_API_KEY")
             break
         except Exception as exc:
             console.print(f"请求失败: {exc}")
-            messages.pop()
             continue
 
 
 @app.command()
 def main() -> None:
     console.print("YiAgent 启动！")
+    session_store.init_db(DB)
+
+    session_id = session_store.latest_session(DB)
+    if session_id is None:
+        session_id = session_store.create_session(DB)
+        console.print(f"已新建对话 {session_id}", style="dim")
+    else:
+        console.print(f"继续会话 {session_id}", style="dim")
+
+    history = session_store.load_session(DB, session_id)
+    if history:
+        console.print(f"已载入 {len(history)} 条历史消息", style="dim")
     provider: LLMProvider = OpenAIChatProvider()
     messages = [
         Message(Role.SYSTEM, load_system_prompt()),
+        *history,
     ]
-    _chat_loop(provider, messages)
+    _chat_loop(provider, messages, session_id)
 
 
 if __name__ == "__main__":
