@@ -153,3 +153,7 @@
 ### 做了
 - 完善`src/yiagent/core/session_store.py`, 补全最后一个函数lastest_session, 用于调取最近一次的会话。
 - 修改`src/yiagent/cli/main.py`, 新写函数save_new_messages, 用于本轮对话结束后将新增消息存入sql, 修改run_turn, 让在`src/yiagent/core/session_store.py`写的函数在cli中生效, 包括写入数据库, 读取数据库等。
+
+## 2026-11-11 Day15 写测试文件
+### 做了
+- 写测试文件tests/test_session_store.py, 目前用于测试session_store.py的功能。也是后续做的本地测试用例。
