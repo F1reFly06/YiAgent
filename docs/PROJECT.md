@@ -170,7 +170,11 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   4. 裁剪历史必须按“轮”切（以 `Role.USER` 为界）：按条数切会在 `assistant(tool_calls)` 与 `tool` 之间断开，产生孤儿消息、请求直接 400
   5. `messages` 表没有时间戳列，做会话列表时无法按“最近活跃”排序（Phase 7 前再说）
 - **未验证的代码分支（3.5 这批没覆盖到，需伪造 provider 才能测）**：`MAX_TOOL_ROUNDS` 超限退出、`_run_turn` 的 `except → del messages[start:]` 回滚路径
-- **阻塞项**：无。**但注意 `api.deepseek.com` 在校园网下 TCP 不可达（WinError 10060），需用手机热点，或把 `.env` 的 `CHAT_BASE_URL` 换成硅基流动 `https://api.siliconflow.cn/v1`**
+- **阻塞项**：无。**`api.deepseek.com` 在校园网下 TCP 不可达（WinError 10060）**，需用手机热点，或把 `.env` 的 `CHAT_BASE_URL` 换成硅基流动 `https://api.siliconflow.cn/v1`
+- **Phase 4 前置验证已完成（2026-11-12）**：`scripts/probe_embedding.py` 跑通硅基流动 embedding——`api.siliconflow.cn` 在校园网下**可达**（与 DeepSeek 不同），`BAAI/bge-m3` 免费（¥0.000000/K tokens，标签 `free-embedding/reranker-model.online.input-tokens`），返回 1024 维
+  - 实测分数：语义相关的两句 cosine **0.714**，无关两句 **0.353** —— 说明「无关」基线不接近 0，`min_score` 阈值起点取 **0.4~0.45**（取 0.2/0.3 等于不过滤，取 0.6+ 会误杀相关块）；真值待 C3 用真实语料再调
+  - 服务限制（影响批处理与切块）：单条输入上限 **8K token**（`max_chars=800` 约 1200 token，安全，但硬切逻辑出 bug 造出巨块会直接 400）；L0 级别 **RPM 2000 / TPM 500,000** → 批大小 32 合适，建索引用「总 token ÷ 50 万 = 最少分钟数」估算耗时，慢不等于卡死
+  - 首次跑失败的坑：`EMBEDDING_API_KEY` 仍是模板值 `your-siliconflow-key`（**长度正好 20**），pydantic 校验能过、一路传到服务器才 401。排查时先打 `len(key)` 与前后几位的 `repr`
 - **协作约定**：我主写代码，AI 只讲解 / review / 起草文档（见第 3 节）
 
 ### 几个已踩过的坑（细节在 DEVLOG）

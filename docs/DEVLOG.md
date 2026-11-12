@@ -157,3 +157,7 @@
 ## 2026-11-11 Day15 写测试文件
 ### 做了
 - 写测试文件tests/test_session_store.py, 目前用于测试session_store.py的功能。也是后续做的本地测试用例。
+
+## 2026-11-12 Day16 开始Phase 4
+### 做了
+- 写了`scripts/probe_embedding.py`, 用于测试embedding探针结果, 跑通embeddingAPI调用
