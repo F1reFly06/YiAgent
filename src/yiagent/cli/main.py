@@ -116,11 +116,11 @@ def _chat_loop(provider: LLMProvider, messages: list[Message], session_id: int) 
             del messages[1:]
             console.print("已清空历史")
             continue
-        
+
         start = len(messages)
         messages.append(Message(Role.USER, text))
         try:
-            _run_turn(provider, messages, session_id,start)
+            _run_turn(provider, messages, session_id, start)
         except AuthenticationError:
             console.print("鉴权失败, 请检查 .env 里的 CHAT_API_KEY")
             break
