@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-11-11 · 当前阶段：Phase 3 ✅ 与过渡任务 3.5（pytest）✅ 均已完成，下一步进 Phase 4（RAG 入库与检索）
+> 最后更新：2026-11-13 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— 切块 v1 已实现，等 dump 验收；Phase 3 / 3.5 已完成
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -60,7 +60,7 @@
 | 2 | **工具调用循环 ★** | ✅ 已完成（2026-11-04） |
 | 3 | 会话与持久化 | ✅ 已完成（2026-11-05 ~ 11-09） |
 | 3.5 | **过渡：pytest 测试持久化层** | ✅ 已完成（2026-11-11，6 passed / 0.13s；不计入 Phase，见第 4 节决策） |
-| 4 | RAG 入库与检索 | 未开始 |
+| 4 | RAG 入库与检索 | 🔨 进行中（A1 ✅ / A2 切块 v1 已实现待验收） |
 | 5 | **检索变成工具 ★** | 未开始 |
 | 6 | 评测集 | 未开始 |
 | 7 | Web + 部署 | 未开始 |
@@ -103,8 +103,10 @@ src/yiagent/core/session_store.py  会话持久化：_SCHEMA（sessions / messag
 src/yiagent/prompts/system.md 系统提示词（人设 / 能力边界 / 风格 / 不编造）
 src/yiagent/providers/openai_compat.py  OpenAIChatProvider：唯一碰网络的地方，产出事件流
 src/yiagent/cli/main.py       typer + rich 入口：main(建表/续接会话/载历史) + _chat_loop / _run_turn(带 session_id, 结束写库) / _save_new_messages / _stream_reply
+src/yiagent/core/chunking.py  切块：Chunk 数据契约(frozen, 4 字段) + split_markdown v1(标题栈 + 逐行扫描 + 空块丢弃)
 
 tests/test_session_store.py  持久化层测试：db fixture(tmp_path 临时库) + _seqs() 直查 helper + 6 个用例
+scripts/probe_embedding.py  embedding 链路自检：key 长度 / 维度 / 相关对 vs 无关对（对照组）
 ```
 
 Phase 2 完成（2026-11-04）：工具调用闭环打通。provider 侧 `tools=` + 按 `tc.index` 分桶累积 `tool_calls` + 循环外先 `ToolCall` 后 `Done`；CLI 侧 `_run_turn` 工具轮次循环（开关是 `finish_reason == "tool_calls"` **且** `tool_calls` 非空）、三段式历史、`MAX_TOOL_ROUNDS = 5`、异常时 `del messages[start:]` 回滚。
@@ -116,8 +118,8 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 
 ## 8. 下次接着干的入口
 
-- **当前在**：**Phase 3 ✅ + Phase 3.5（pytest）✅ 均已完成**（2026-11-11）。持久化闭环已有测试护栏：6 个用例覆盖「往返保真 / 空库与空会话的边界返回值 / `seq` 自增与按会话独立 / 外键约束真生效」
-- **下次第一件事**：进 **Phase 4（RAG 入库与检索）**。先只定接口与数据结构（切块函数签名、`core/vector_store.py` 的 add/search、embedding 调用位置），再动手写实现；Phase 4 的拆分步骤下次开工时先补进本节
+- **当前在**：**Phase 4（RAG 入库与检索）进行中**（2026-11-12 ~ 11-13）。已完成：embedding 链路验证（`probe_embedding.py`）、`uv add numpy`、`.gitignore` 加 `data/index/`、`Chunk` 数据契约、`split_markdown` v1
+- **下次第一件事**：① 修 `chunking.py` 两处命名（见「Phase 4 进度」）② 写 `scripts/dump_chunks.py` 并跑 `docs/DEVLOG.md` 验收切块 ③ 验收通过后进 B1（代码块保护 + 超长块切分）
 - **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
   - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
   - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
@@ -163,6 +165,21 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   - 实现约定：`db` fixture 基于 `tmp_path` 每测一份全新空库（`init_db` 后返回 `str` 路径），**绝不碰 `data/yiagent.db`**；`_seqs()` helper 直接 `SELECT seq` 查库，刻意不用 `load_session` 验 `seq`（避免用它自己的 `ORDER BY seq` 自证）
   - `TOOL_CALLS` 必须显式标注 `list[dict[str, object]]`：字面量会被推断成更窄的 `list[dict[str, str | dict[str, str]]]`，而 `list` / `dict` 都是不变的，与 `Message.tool_calls` 的声明不兼容（basedpyright 报错，运行时无影响）
   - **本批未覆盖**：`MAX_TOOL_ROUNDS` 超限、`_run_turn` 的 `except → del messages[start:]` 回滚——这两条要伪造 `LLMProvider`（`stream()` 按剧本吐 `ToolCall` 事件）才测得到，留给后续
+- **Phase 4 拆步（A 打通 → B 做对 → C 可用，共 11 小步）**：
+  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（代码完成，待验收）/ A3 embedding 链路 ✅（探针）/ A4 `VectorStore` 内存版（add + 暴力点积）/ A5 端到端 spike 脚本
+  - **B 做对**：B1 切块 v2（代码块保护 + 超长块按段落累积 + 硬切 + 最小块合并）/ B2 L2 归一化 + `min_score` / B3 `save` / `load` + `meta.json` 校验 `dim` 与 `model`
+  - **C 可用**：C1 `indexer.py` 扫目录 + `build_index` / C2 `yiagent index` 子命令（**注意：Typer 加第二个 command 后裸跑会变 help 页，必须先把 `main` 改成 `@app.callback(invoke_without_command=True)`**）/ C3 真实语料 10 个问题看 top-3 命中率（同时是 Phase 5 的检索基线）
+- **Phase 4 进度：A1 ✅ / A2 代码完成（2026-11-13）**：
+  - `Chunk(text, source, heading, line_start)`，`frozen=True`；只留 4 个字段，每个都必须有下游消费者；`heading` 单独存一份而不只拼进 `text`（从 `text` 反解析标题很脆弱）
+  - `split_markdown(text, source, max_chars=DEFAULT_MAX_CHARS) -> list[Chunk]`：栈 `list[tuple[int, str]]` 维护标题路径、`buffer` 攒正文行、`heading_line` 记块起始行号（初始 1，因为开头可能有无标题正文）
+  - 关键时机：**块是在「遇到下一个标题」那一刻封口的**，所以循环结束后必须再 `flush()` 一次，否则最后一块永远出不来
+  - 栈弹出条件是 `stack[-1][0] >= level`（**`>=` 不是 `>`**）：同级互斥、子级累加，用 `>` 会拼出「二级 > 二级」
+  - 正则 `^(#{1,6})\s+(.+)$`：`^` 保证缩进的 `#` 不算标题，`\s+` 强制 `#` 后有空格（与 Markdown 规范一致）
+  - 空块（只有标题没正文）**有意丢弃**：对检索无价值，留着只制造噪声
+  - **待改两处命名（明天开工先做）**：常量 `DEFFAULT_MAX_CHARS` → `DEFAULT_MAX_CHARS`（两处）；参数 `max_char` → `max_chars`（与 docstring / 未来调用方一致，否则 `max_chars=` 关键字调用会 `TypeError`）
+  - v1 明确不做：超长块切分（`max_chars` 占位不用）、代码块 ``` 内的 `#` 保护 → 全归 B1
+  - **验收工具 `scripts/dump_chunks.py` 尚未创建**；验收看四点：块数合理 / 标题路径两级递进无同级嵌套 / 无空块 / 代码块内 `#` 被切开（**这条是预期，别修**）
+  - 检视器 vs 测试：切块输出形态不唯一，写不出精确期望值，所以 `dump_chunks.py` 只打印不断言；能自动化的只有「性质」（每块非空、heading 无同级重复、所有块拼回去应覆盖原文绝大部分非空行），留待 B1 写成 pytest
 - **遗留问题（不阻塞进 Phase 4）**：
   1. `/clear` 只清内存不清库，清完继续聊会接着原 `seq` 往后排；建议改成「顺带 `create_session` 换新会话」
   2. `load_session` 名字与返回值（`list[Message]`）不匹配，将来加「读会话元信息」时统一改名
@@ -210,6 +227,8 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 - **`list` / `dict` 是「不变（invariant）」的**：字面量 `[... {"id": "x"}]` 会被推断成 `list[dict[str, str]]`，赋给 `list[dict[str, object]]` 会报不兼容（`dict[str, str]` 不是 `dict[str, object]` 的子类型，因为 dict 可变、放行等于允许往里塞任意对象）。**修法是给变量显式标注宽类型，不是 `# type: ignore`**（写测试常量 `TOOL_CALLS` 时就会碰到）
 - **`pyproject.toml` 的数组引号没闭合不会给你好脸色**：`testpaths = ["tests]` 少一个 `"` → TOML 解析直接 `unterminated string`，`uv` 的任何命令（包括 `uv run pytest`）都起不来，报错行号却指在这行，容易误以为是 pytest 配置项写错
 - **断言缩进掉进 `for` 循环 = 必挂**：循环 3 次却要求某时刻已有 3 条记录，第一次迭代就 `assert [1] == [1,2,3]` 失败。这类错误的报错信息本身就带 diff（左右值都打印），**先看是「值不对」还是「时机不对」**——`assert` 位置错了时，值往往只差一个元素
+- **常量名拼错，只要定义和使用错成同一个串就不会报错**：`DEFFAULT_MAX_CHARS` / `DEFALUT_MAX_CHARS` 这类错误，单文件内完全自洽，代码照跑；暴露的时机是「别处 `from ... import DEFAULT_MAX_CHARS`」，而那时你已经忘了当初怎么拼的。**常量比变量更该核对拼写，因为它注定被跨文件引用**。同理 `max_char` / `max_chars` 单复数不一致，会让 `max_chars=2000` 这种关键字调用直接 `TypeError`
+- **`@dataclass` 漏 `frozen=True` 不会报错**：纯数据类会变成可变、且 `__hash__` 为 `None`——下游改了 `text` 却不改 `heading`（两者不再一致，且不报错），也不能放进 `set` 或当 dict key。`Tool` 和三个事件类都是冻结的，纯数据类照做
 
 ## 9. 已知的坑
 

@@ -161,3 +161,8 @@
 ## 2026-11-12 Day16 开始Phase 4
 ### 做了
 - 写了`scripts/probe_embedding.py`, 用于测试embedding探针结果, 跑通embeddingAPI调用
+
+## 2026-11-13 Day17 继续Phase 4
+### 做了
+- 补全`src/yiagent/core/chunking.py`, 用于切片Markdown文件。
+- 写`scripts/dump_chunks.py`, 用于测试chunking.py的切片。
