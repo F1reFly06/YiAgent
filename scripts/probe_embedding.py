@@ -5,7 +5,6 @@ from openai import OpenAI
 from yiagent.config import embeddings_settings as settings
 
 
-
 raw = settings.api_key.get_secret_value()
 print("key 长度:", len(raw))
 print("key 前6:", repr(raw[:6]))
@@ -24,11 +23,7 @@ def cosine(a: list[float], b: list[float]) -> float:
     return dot / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
 
 
-texts = [
-    "按 E 进入驾驶模式，开船期间不能钓鱼",
-    "开船的时候不能抛竿",
-    "红烧肉要小火慢炖两个小时"
-]
+texts = ["按 E 进入驾驶模式，开船期间不能钓鱼", "开船的时候不能抛竿", "红烧肉要小火慢炖两个小时"]
 resp = client.embeddings.create(model=settings.model, input=texts)
 vectors: list[list[float]] = [d.embedding for d in resp.data]
 

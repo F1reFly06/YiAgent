@@ -145,10 +145,7 @@ def main() -> None:
     if history:
         console.print(f"已载入 {len(history)} 条历史消息", style="dim")
     provider: LLMProvider = OpenAIChatProvider()
-    messages = [
-        Message(Role.SYSTEM, load_system_prompt()),
-        *history,
-    ]
+    messages = [Message(Role.SYSTEM, load_system_prompt()), *history]
     _chat_loop(provider, messages, session_id)
 
 
