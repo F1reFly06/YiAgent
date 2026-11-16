@@ -18,5 +18,9 @@ wheels/
 #杂
 随手记.md
 
+
 #data
 data/*.db*
+data/index/
+
+
