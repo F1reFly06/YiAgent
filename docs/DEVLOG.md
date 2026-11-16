@@ -166,3 +166,8 @@
 ### 做了
 - 补全`src/yiagent/core/chunking.py`, 用于切片Markdown文件。
 - 写`scripts/dump_chunks.py`, 用于测试chunking.py的切片。
+
+
+## 2026-11-16 Day18 继续Phase 4
+### 做了
+- 补充`src/yiagent/core/chunking.py`, 让切片内容更完整, 字数扩充, 切片格式更规范, 隐去不需要的格式比如md标题符号 ## 这样的。
