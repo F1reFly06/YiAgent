@@ -171,3 +171,7 @@
 ## 2026-11-16 Day18 继续Phase 4
 ### 做了
 - 补充`src/yiagent/core/chunking.py`, 让切片内容更完整, 字数扩充, 切片格式更规范, 隐去不需要的格式比如md标题符号 ## 这样的。
+
+## 2026-11-17 Day19 继续Phase 4
+### 做了
+- 写了`tests/test_chunking.py` 一个测试脚本, 用来测试chunking的功能。

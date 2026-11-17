@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-11-16 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / B1 完成，切块链路验收通过；下一步 A4（VectorStore 内存版）
+> 最后更新：2026-11-17 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / B1 全部完成且测试护栏就位（12 passed），下一步 A4（VectorStore 内存版）
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -106,6 +106,7 @@ src/yiagent/cli/main.py       typer + rich 入口：main(建表/续接会话/载
 src/yiagent/core/chunking.py  切块：Chunk 数据契约(frozen, 4 字段) + split_markdown v1(标题栈 + 逐行扫描 + 空块丢弃)
 
 tests/test_session_store.py  持久化层测试：db fixture(tmp_path 临时库) + _seqs() 直查 helper + 6 个用例
+tests/test_chunking.py       切块测试：6 条性质用例（非空 / 无同级嵌套 / 代码块保护 / 孤立#丢弃 / 超长切分 ×2）
 scripts/probe_embedding.py  embedding 链路自检：key 长度 / 维度 / 相关对 vs 无关对（对照组）
 scripts/dump_chunks.py      切块检视器：剥掉 heading 前缀打印正文 + 每块字数 + 长度分布（不断言）
 ```
@@ -119,8 +120,8 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 
 ## 8. 下次接着干的入口
 
-- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-16）。已完成：embedding 链路验证（`probe_embedding.py`）、A1 依赖与契约、A2 切块 v1、B1 切块打磨（代码块保护 + 孤立 `#` 过滤 + 超长切分）；`dump_chunks.py` 已能剥前缀显示正文 + 打长度分布
-- **下次第一件事**：① 给 `chunking.py` 补 4 个 pytest（性质测试，见「Phase 4 进度」末条）② 进 A4 `VectorStore` 内存版（`add` + 暴力点积 `search`）
+- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-17）。已完成：embedding 链路验证、A1 依赖与契约、A2 切块 v1、B1 切块打磨（代码块保护 + 孤立 `#` 过滤 + 超长切分）+ B1 测试护栏（`test_chunking.py` 6 条，全仓 12 passed）
+- **下次第一件事**：进 **A4 `VectorStore` 内存版** —— `add(chunks, vectors)` + `search(query_vector, top_k)`（先做暴力点积，不做持久化、不做归一化，归一化留给 B2）；配 pytest 用假向量验证 top-1 正确
 - **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
   - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
   - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
@@ -189,7 +190,17 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
     1. `flush()` 里写成 `text=f"{heading}\n{body}"`（应为 `piece`）：循环变量是 `piece`，拼进去的却是完整 `body` → 超长章节被拆成 N 个**内容完全相同**的巨块，块数正确、`ruff` 干净、不报任何错
     2. `re.compile(r"^#{1.6}$")`：量词必须是 `{1,6}`（逗号）。写成 `{1.6}` 时 Python **不抛异常**，把 `{1.6}` 当字面量，该正则永远不命中 `###`，过滤功能静默失效
   - v1 明确不做、B1 已补上的：超长块切分、代码块 ``` 内的 `#` 保护
-  - 检视器 vs 测试：切块输出形态不唯一，写不出精确期望值，所以 `dump_chunks.py` 只打印不断言；能自动化的只有「性质」（每块非空、heading 无同级重复、`#` 不产生假标题、超长块被拆到上限内），**这批 pytest 尚未写**，属 B1 收尾遗留
+  - 检视器 vs 测试：切块输出形态不唯一，写不出精确期望值，所以 `dump_chunks.py` 只打印不断言；能自动化的只有「性质」（每块非空、heading 无同级重复、`#` 不产生假标题、超长块被拆到上限内）
+- **B1 收尾：切块测试护栏（2026-11-17）**：
+  - `tests/test_chunking.py` 6 条用例，与 `test_session_store.py` 合计 **12 passed**：
+    1. `test_chunks_are_never_empty` —— 各种输入下每块 `text.strip()` 非空
+    2. `test_heading_path_has_no_duplicate_levels` —— `heading.split(" > ")` 无重复项（抓「二级 > 二级」）
+    3. `test_code_fence_hash_is_not_a_heading` —— ``` 内的 `# 注释` 不产生新块，且整块只有 1 块
+    4. `test_isolated_hashes_line_is_dropped` —— 孤立 `###` 不进正文
+    5. `test_long_block_with_heading_is_split` —— 3000 字带标题，每块 `len(text) <= 800`
+    6. `test_long_block_without_heading_is_split` —— **专门守 `flush()` 的 else 分支**；这条在修 `else body → else piece` 之前是红的（`assert 3000 <= 800`）
+  - TDD 时序有价值：先跑出 1 红（`else` 分支的 `body/piece` bug），修完变 12 绿，证明这条测试真的能抓 bug
+  - 断言设计原则：**断言行为，不断言全文**。`assert "###" not in text` 比 `assert text == "Day4\n- 今天没做什么"` 更能表达意图，也不会因为 `.strip()` 细节变化而误红
 - **遗留问题（不阻塞进 Phase 4）**：
   1. `/clear` 只清内存不清库，清完继续聊会接着原 `seq` 往后排；建议改成「顺带 `create_session` 换新会话」
   2. `load_session` 名字与返回值（`list[Message]`）不匹配，将来加「读会话元信息」时统一改名
@@ -241,6 +252,8 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 - **`@dataclass` 漏 `frozen=True` 不会报错**：纯数据类会变成可变、且 `__hash__` 为 `None`——下游改了 `text` 却不改 `heading`（两者不再一致，且不报错），也不能放进 `set` 或当 dict key。`Tool` 和三个事件类都是冻结的，纯数据类照做
 - **正则量词是 `{m,n}`，用逗号不是点**：`r"^#{1.6}$"` **不会抛异常**——`{1.6}` 不是合法量词语法，被当作字面字符 `{1.6}`，正则永远匹配不到 `###`，过滤逻辑静默失效。`ruff` / 类型检查都抓不到，只能靠「改完立刻用真实数据验证行为」（跑 `dump_chunks.py` 看第 61 块还有没有 `###`）
 - **`for piece in ...:` 循环体里却用 `body`**：变量名相近时极易写错，表现是「块数正确、`ruff` 干净、不报错，但每块内容完全一样且都超长」。抓它的唯一办法是**给输出加一条不变量断言**（每块长度 ≤ 上限 / 块内容不重复），而不是靠眼睛扫一遍。同理 `max_char` / `max_chars` 这类单复数差异也属于同一类
+- **条件表达式只改了一个分支**：`f"{heading}\n{piece}" if heading else body` —— 主分支从 `body` 改成 `piece` 了，`else` 分支还留着 `body`。因为「无标题块」在真实文档里几乎不出现（`DEVLOG.md` 顶部有 `# 开发日志`，栈永远非空），跑 `dump_chunks.py` 完全看不出来。**改三元表达式时，两个分支都要逐个确认**；这类 bug 只能靠专门构造「无标题 + 超长」的测试来抓
+- **测试红了，先分清是代码错还是期望值错**：判断链是「实际值是否合理 → 回看实现里有没有对应的处理 → 再决定改哪边」。实测踩过的例子：期望 `"Day4\n- 今天没做什么\n"`，实际 `"Day4\n- 今天没做什么"`——因为 `flush()` 里 `body` 过了 `.strip()`，**实际值才是对的**，该改的是期望值。反过来看 `assert [1] == [1,2,3]` 那种，实际值明显是半成品，那才是代码错
 
 ## 9. 已知的坑
 
