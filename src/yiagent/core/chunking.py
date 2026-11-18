@@ -76,7 +76,7 @@ def split_markdown(text: str, source: str, max_chars: int = DEFAULT_MAX_CHARS) -
         for piece in _split_long(body, max_chars - prefix_len):
             chunks.append(
                 Chunk(
-                    text=f"{heading}\n{piece}" if heading else body,
+                    text=f"{heading}\n{piece}" if heading else piece,
                     source=source,
                     heading=heading,
                     line_start=heading_line, # 切出的多块共享标题行号

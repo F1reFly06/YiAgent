@@ -17,17 +17,15 @@ def test_chunks_are_never_empty() -> None:
     text = "# A\n正文一\n\n## B\n\n### C\n正文三\n"
     chunks = split_markdown(text, "t.md")
 
-    assert chunks
+    assert len(chunks) == 2
     assert all(chunk.text.strip() for chunk in chunks)
 
 
-def test_heading_path_has_no_duplicate_levels() -> None:
+def test_heading_path_matches_structure() -> None:
     text = "# A\n一\n\n## B\n二\n\n## C\n三\n\n# D\n四\n"
     chunks = split_markdown(text, "t.md")
 
-    for chunk in chunks:
-        parts = chunk.heading.split(" > ")
-        assert len(parts) == len(set(parts)), f"同级标题被叠进了路径: {chunk.heading}"
+    assert [chunk.heading for chunk in chunks] == ["A", "A > B", "A > C", "D"]
 
 
 def test_code_fence_hash_is_not_a_heading() -> None:
