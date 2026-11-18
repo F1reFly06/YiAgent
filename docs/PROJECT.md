@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-11-17 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / B1 全部完成且测试护栏就位（12 passed），下一步 A4（VectorStore 内存版）
+> 最后更新：2026-11-18 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / A4 / B1 完成（A4 待补测试），下一步 `test_vector_store.py` + `embedding.py`
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -103,12 +103,14 @@ src/yiagent/core/session_store.py  会话持久化：_SCHEMA（sessions / messag
 src/yiagent/prompts/system.md 系统提示词（人设 / 能力边界 / 风格 / 不编造）
 src/yiagent/providers/openai_compat.py  OpenAIChatProvider：唯一碰网络的地方，产出事件流
 src/yiagent/cli/main.py       typer + rich 入口：main(建表/续接会话/载历史) + _chat_loop / _run_turn(带 session_id, 结束写库) / _save_new_messages / _stream_reply
-src/yiagent/core/chunking.py  切块：Chunk 数据契约(frozen, 4 字段) + split_markdown v1(标题栈 + 逐行扫描 + 空块丢弃)
+src/yiagent/core/chunking.py  切块：Chunk 数据契约(frozen, 4 字段) + split_markdown(标题栈 + 代码块保护 + 孤立#过滤 + 超长切分)
+src/yiagent/core/vector_store.py  内存向量库：SearchHit + VectorStore(_matrix/_chunks/_dim + add 四关校验 + search 暴力点积)
 
 tests/test_session_store.py  持久化层测试：db fixture(tmp_path 临时库) + _seqs() 直查 helper + 6 个用例
 tests/test_chunking.py       切块测试：6 条性质用例（非空 / 无同级嵌套 / 代码块保护 / 孤立#丢弃 / 超长切分 ×2）
 scripts/probe_embedding.py  embedding 链路自检：key 长度 / 维度 / 相关对 vs 无关对（对照组）
 scripts/dump_chunks.py      切块检视器：剥掉 heading 前缀打印正文 + 每块字数 + 长度分布（不断言）
+scripts/spike_vector.py     向量库手工冒烟：3 条假向量验排序与条数，不调网络
 ```
 
 Phase 2 完成（2026-11-04）：工具调用闭环打通。provider 侧 `tools=` + 按 `tc.index` 分桶累积 `tool_calls` + 循环外先 `ToolCall` 后 `Done`；CLI 侧 `_run_turn` 工具轮次循环（开关是 `finish_reason == "tool_calls"` **且** `tool_calls` 非空）、三段式历史、`MAX_TOOL_ROUNDS = 5`、异常时 `del messages[start:]` 回滚。
@@ -120,8 +122,8 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 
 ## 8. 下次接着干的入口
 
-- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-17）。已完成：embedding 链路验证、A1 依赖与契约、A2 切块 v1、B1 切块打磨（代码块保护 + 孤立 `#` 过滤 + 超长切分）+ B1 测试护栏（`test_chunking.py` 6 条，全仓 12 passed）
-- **下次第一件事**：进 **A4 `VectorStore` 内存版** —— `add(chunks, vectors)` + `search(query_vector, top_k)`（先做暴力点积，不做持久化、不做归一化，归一化留给 B2）；配 pytest 用假向量验证 top-1 正确
+- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-18）。已完成：embedding 链路验证、A1 依赖与契约、A2 切块 v1、B1 切块打磨 + 测试护栏（`test_chunking.py` 6 条）、A4 `VectorStore` 内存版（代码 + `spike_vector.py` 手工验证）；全仓 **12 passed**
+- **下次第一件事**：① 写 `tests/test_vector_store.py` 5 条（预期全仓 17 passed）② 写 `embedding.py`（`embed(texts) -> list[list[float]]`，分批 + 顺序保证）③ 跑 A5 端到端 spike（真笔记 → 切块 → 真向量 → 检索 top-3）
 - **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
   - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
   - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
@@ -168,7 +170,7 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   - `TOOL_CALLS` 必须显式标注 `list[dict[str, object]]`：字面量会被推断成更窄的 `list[dict[str, str | dict[str, str]]]`，而 `list` / `dict` 都是不变的，与 `Message.tool_calls` 的声明不兼容（basedpyright 报错，运行时无影响）
   - **本批未覆盖**：`MAX_TOOL_ROUNDS` 超限、`_run_turn` 的 `except → del messages[start:]` 回滚——这两条要伪造 `LLMProvider`（`stream()` 按剧本吐 `ToolCall` 事件）才测得到，留给后续
 - **Phase 4 拆步（A 打通 → B 做对 → C 可用，共 11 小步）**：
-  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（2026-11-16 验收）/ A3 embedding 链路 ✅（探针）/ **A4 `VectorStore` 内存版（add + 暴力点积）← 下一步** / A5 端到端 spike 脚本
+  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（2026-11-16 验收）/ A3 embedding 链路 ✅（探针）/ **A4 `VectorStore` 内存版 ✅（2026-11-18，代码 + `spike_vector.py` 手工验证；正式测试待补）** / A5 端到端 spike 脚本 ← 下一步
   - **B 做对**：B1 切块 v2 ✅（2026-11-16，代码块保护 + 孤立 `#` 过滤 + 超长块按段落累积 + 硬切）/ B2 L2 归一化 + `min_score` / B3 `save` / `load` + `meta.json` 校验 `dim` 与 `model`
   - **C 可用**：C1 `indexer.py` 扫目录 + `build_index` / C2 `yiagent index` 子命令（**注意：Typer 加第二个 command 后裸跑会变 help 页，必须先把 `main` 改成 `@app.callback(invoke_without_command=True)`**）/ C3 真实语料 10 个问题看 top-3 命中率（同时是 Phase 5 的检索基线）
 - **Phase 4 进度：A1 ✅ / A2 ✅ / B1 ✅（2026-11-12 ~ 11-16）**：
@@ -201,6 +203,18 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
     6. `test_long_block_without_heading_is_split` —— **专门守 `flush()` 的 else 分支**；这条在修 `else body → else piece` 之前是红的（`assert 3000 <= 800`）
   - TDD 时序有价值：先跑出 1 红（`else` 分支的 `body/piece` bug），修完变 12 绿，证明这条测试真的能抓 bug
   - 断言设计原则：**断言行为，不断言全文**。`assert "###" not in text` 比 `assert text == "Day4\n- 今天没做什么"` 更能表达意图，也不会因为 `.strip()` 细节变化而误红
+  - 两条偏弱的用例已加固（2026-11-18）：`test_chunks_are_never_empty` 补 `len(chunks) == 2`（原来删掉空块丢弃也照样绿）；`test_heading_path_has_no_duplicate_levels` 改为 `test_heading_path_matches_structure` 精确断言 `["A", "A > B", "A > C", "D"]`（原「无重复字符串」的写法在 `>=` 改成 `>` 时仍然全绿，因为同级标题名字不同，路径里不会出现重复项）
+  - 判断测试强度的通用方法：**问「我故意把这行改坏，这条测试会不会红」**（手动变异测试）。对 `>=` 做过一次验证——只有精确断言那条会红
+- **A4 完成：`core/vector_store.py` 内存版（2026-11-18）**：
+  - `SearchHit(chunk, score)`（frozen）：不用 `tuple[Chunk, float]`，避免 `hit[0]` 这种靠位置取值
+  - 三个内部字段：`_matrix: NDArray[np.float32]` 形状 `(n, dim)`、`_chunks: list[Chunk]`、`_dim: int`（0 = 未初始化）；`_matrix` 初始用 `np.zeros((0, 0))` 而不是 `None` / `np.array([])`，**保证形状维度数永远是二维**，`@` 和 `vstack` 都能直接用
+  - 核心不变量：**`_matrix` 第 i 行 ↔ `_chunks[i]`**。破了不报错，只是「B 的分数配 A 的内容」
+  - `add` 四关：数量一致 → 非空直接返回 → `ndim == 2` → 维度与 `_dim` 一致；然后 `_matrix = matrix if not self._chunks else np.vstack([旧, 新])` + `_chunks.extend(chunks)`（判空必须在 extend **之前**；`vstack` 顺序反了会和 extend 错位）
+  - `search` 四步：空库/`top_k<=0` 提前返回（**必须在维度校验之前**，否则空库查询会抛错）→ query 形状必须是 `(dim,)` → `scores = _matrix @ query` 一次算完 → `argsort(scores)[::-1][:top_k]` 取索引 → 用同一行号取 `_chunks[int(i)]`
+  - `argsort` 而非 `sort`：`sort` 只给排好序的分数，丢了「属于哪一行」；`scores.sort()` 更是原地改分数但不动 `_chunks`，直接错位
+  - **当前是裸点积，不是余弦**：模长大的向量分数偏高。现在能工作是因为 bge-m3 输出向量模长都接近 1；这是个未声明的假设，B2 用 L2 归一化把它变成显式保证
+  - 手工验证（`scripts/spike_vector.py`）：3 条假向量 `[1,0] / [0,1] / [0.7,0.7]`，query `[1,0]` → `条数 3`，输出 `A 1.000 / C 0.700 / B 0.000`（手算点积 1.0 / 0.7 / 0.0，顺序对应 `argsort[::-1]`）
+  - **`tests/test_vector_store.py` 尚未写**（5 条待补：top-1 正确 + 分数递减、数量不一致抛错、维度不一致抛错、空库返回 `[]`、`top_k` 超长返回全部）
 - **遗留问题（不阻塞进 Phase 4）**：
   1. `/clear` 只清内存不清库，清完继续聊会接着原 `seq` 往后排；建议改成「顺带 `create_session` 换新会话」
   2. `load_session` 名字与返回值（`list[Message]`）不匹配，将来加「读会话元信息」时统一改名
@@ -268,6 +282,7 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 - `env_file=".env"` 是**相对 cwd** 解析的，换个目录跑就找不到（`importlib.resources` 定位 `system.md` 就避开了这个问题）
 - **在非项目目录 `uv run` 会找不到包**：`PyCharm/D:\` 下 `uv run python` 会用一个不含 `yiagent` 的环境，要加 `--project d:/YiAgent` 或先 `cd` 回项目根
 - 缩进错误在 Python 里是**语义错误不是格式错误**：模型调用段掉出 `while` → 表现为“只重复提示、从不回答”，程序不报错、lint 也不报错
+- **写入语句被多缩进一层掉进 `elif` 分支**（`vector_store.add`）：`self._matrix = ...` 和 `self._chunks.extend(...)` 缩进了 4 个空格，恰好落进 `elif dim != self._dim:` 的块里。因为首次 `add` 走的是 `if self._dim == 0` 分支，那两行永远不执行 → `len(store)` 恒为 0，且零报错。**`if / elif / else` 之间夹带无关语句时，先确认缩进层级**；能靠 `print(len(...))` 发现，说明「先暴露状态再查原因」比逐行读代码快
 - `while True` 里 `break` 之后，循环**外面**的代码会执行一次（不是“永不执行”）；判断命令必须在 `messages.append` **之前**，否则命令文本会被发给模型
 - `/clear` 要用 `del messages[1:]`（保留 index 0 的 system），写成 `messages = []` 只改局部引用、`clear()` 会把人设一起删掉
 - `stream=True` 只改变**响应**方式（SSE 分块），请求体始终是整包，模型无状态、每轮都要重发全部历史
