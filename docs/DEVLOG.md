@@ -181,3 +181,7 @@
 - 加固 `test_chunking.py` 两条偏弱的用例: `test_chunks_are_never_empty` 补 `len(chunks) == 2`: `test_heading_path_has_no_duplicate_levels` 改成 `test_heading_path_matches_structure`, 精确断言 `["A", "A > B", "A > C", "D"]`
 - 写 `src/yiagent/core/vector_store.py`, 用于存储chunks和向量化结果的向量, 目前存储在内存中。
 - 写 `scripts/spike_vector.py` 手工验证: 3 条假向量查询，输出 `条数 3 / A 1.000 / C 0.700 / B 0.000`
+
+## 2026-11-19 Day21 继续Phase 4
+### 做了
+- 写了`tests/test_vector_store.py`测试脚本, 用于测试vector_store.py的功能。

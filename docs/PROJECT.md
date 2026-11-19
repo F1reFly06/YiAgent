@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-11-18 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / A4 / B1 完成（A4 待补测试），下一步 `test_vector_store.py` + `embedding.py`
+> 最后更新：2026-11-19 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / A4 / B1 完成（A4 测试已补齐，全仓 17 passed），下一步 `core/embedding.py` + A5 端到端 spike
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -60,7 +60,7 @@
 | 2 | **工具调用循环 ★** | ✅ 已完成（2026-11-04） |
 | 3 | 会话与持久化 | ✅ 已完成（2026-11-05 ~ 11-09） |
 | 3.5 | **过渡：pytest 测试持久化层** | ✅ 已完成（2026-11-11，6 passed / 0.13s；不计入 Phase，见第 4 节决策） |
-| 4 | RAG 入库与检索 | 🔨 进行中（A1 ✅ / A2 ✅ / B1 ✅，共 11 小步，见第 8 节） |
+| 4 | RAG 入库与检索 | 🔨 进行中（A1 ✅ / A2 ✅ / A4 ✅ / B1 ✅，共 11 小步，见第 8 节） |
 | 5 | **检索变成工具 ★** | 未开始 |
 | 6 | 评测集 | 未开始 |
 | 7 | Web + 部署 | 未开始 |
@@ -108,6 +108,7 @@ src/yiagent/core/vector_store.py  内存向量库：SearchHit + VectorStore(_mat
 
 tests/test_session_store.py  持久化层测试：db fixture(tmp_path 临时库) + _seqs() 直查 helper + 6 个用例
 tests/test_chunking.py       切块测试：6 条性质用例（非空 / 无同级嵌套 / 代码块保护 / 孤立#丢弃 / 超长切分 ×2）
+tests/test_vector_store.py   向量库测试：5 条（排序+分数归属 / 数量不一致 / 维度不一致且不污染 / 空库 / top_k 超长）
 scripts/probe_embedding.py  embedding 链路自检：key 长度 / 维度 / 相关对 vs 无关对（对照组）
 scripts/dump_chunks.py      切块检视器：剥掉 heading 前缀打印正文 + 每块字数 + 长度分布（不断言）
 scripts/spike_vector.py     向量库手工冒烟：3 条假向量验排序与条数，不调网络
@@ -122,8 +123,8 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 
 ## 8. 下次接着干的入口
 
-- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-18）。已完成：embedding 链路验证、A1 依赖与契约、A2 切块 v1、B1 切块打磨 + 测试护栏（`test_chunking.py` 6 条）、A4 `VectorStore` 内存版（代码 + `spike_vector.py` 手工验证）；全仓 **12 passed**
-- **下次第一件事**：① 写 `tests/test_vector_store.py` 5 条（预期全仓 17 passed）② 写 `embedding.py`（`embed(texts) -> list[list[float]]`，分批 + 顺序保证）③ 跑 A5 端到端 spike（真笔记 → 切块 → 真向量 → 检索 top-3）
+- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-19）。已完成：embedding 链路验证、A1 依赖与契约、A2 切块 v1、B1 切块打磨 + 测试护栏（`test_chunking.py` 6 条）、A4 `VectorStore` 内存版 + 测试护栏（`test_vector_store.py` 5 条）；全仓 **17 passed**
+- **下次第一件事**：① 写 `core/embedding.py`（`embed(texts) -> list[list[float]]`，批大小 32 + 顺序严格对应 + 维度校验 + 长度校验）② 跑 A5 端到端 spike（`docs/DEVLOG.md` → 切块 → 真向量 → `store.search("怎么写测试")` 看 top-3）③ 收尾可选：补 `add` 累积路径、非空库 `top_k=0` 两条用例；进 B2（L2 归一化 + `min_score`）
 - **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
   - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
   - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
@@ -170,7 +171,7 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   - `TOOL_CALLS` 必须显式标注 `list[dict[str, object]]`：字面量会被推断成更窄的 `list[dict[str, str | dict[str, str]]]`，而 `list` / `dict` 都是不变的，与 `Message.tool_calls` 的声明不兼容（basedpyright 报错，运行时无影响）
   - **本批未覆盖**：`MAX_TOOL_ROUNDS` 超限、`_run_turn` 的 `except → del messages[start:]` 回滚——这两条要伪造 `LLMProvider`（`stream()` 按剧本吐 `ToolCall` 事件）才测得到，留给后续
 - **Phase 4 拆步（A 打通 → B 做对 → C 可用，共 11 小步）**：
-  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（2026-11-16 验收）/ A3 embedding 链路 ✅（探针）/ **A4 `VectorStore` 内存版 ✅（2026-11-18，代码 + `spike_vector.py` 手工验证；正式测试待补）** / A5 端到端 spike 脚本 ← 下一步
+  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（2026-11-16 验收）/ A3 embedding 链路 ✅（探针）/ A4 `VectorStore` 内存版 ✅（2026-11-18 代码 + 2026-11-19 测试护栏）/ A5 端到端 spike 脚本 ← 下一步（前置 `core/embedding.py`）
   - **B 做对**：B1 切块 v2 ✅（2026-11-16，代码块保护 + 孤立 `#` 过滤 + 超长块按段落累积 + 硬切）/ B2 L2 归一化 + `min_score` / B3 `save` / `load` + `meta.json` 校验 `dim` 与 `model`
   - **C 可用**：C1 `indexer.py` 扫目录 + `build_index` / C2 `yiagent index` 子命令（**注意：Typer 加第二个 command 后裸跑会变 help 页，必须先把 `main` 改成 `@app.callback(invoke_without_command=True)`**）/ C3 真实语料 10 个问题看 top-3 命中率（同时是 Phase 5 的检索基线）
 - **Phase 4 进度：A1 ✅ / A2 ✅ / B1 ✅（2026-11-12 ~ 11-16）**：
@@ -214,7 +215,16 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   - `argsort` 而非 `sort`：`sort` 只给排好序的分数，丢了「属于哪一行」；`scores.sort()` 更是原地改分数但不动 `_chunks`，直接错位
   - **当前是裸点积，不是余弦**：模长大的向量分数偏高。现在能工作是因为 bge-m3 输出向量模长都接近 1；这是个未声明的假设，B2 用 L2 归一化把它变成显式保证
   - 手工验证（`scripts/spike_vector.py`）：3 条假向量 `[1,0] / [0,1] / [0.7,0.7]`，query `[1,0]` → `条数 3`，输出 `A 1.000 / C 0.700 / B 0.000`（手算点积 1.0 / 0.7 / 0.0，顺序对应 `argsort[::-1]`）
-  - **`tests/test_vector_store.py` 尚未写**（5 条待补：top-1 正确 + 分数递减、数量不一致抛错、维度不一致抛错、空库返回 `[]`、`top_k` 超长返回全部）
+  - **A4 测试护栏（2026-11-19）：`tests/test_vector_store.py` 5 条，全仓 17 passed**
+    1. `test_search_returns_nearest_first` —— A=`[1,0]` / B=`[0,1]` / C=`[0.7,0.7]`，query=`[1,0]` → 顺序必须是 `A, C, B`；三个分数 1.0 / 0.7 / 0.0 逐项 `pytest.approx`（**抓 `_matrix` 第 i 行与 `_chunks[i]` 错位**：顺序看着对、分数却是别人的）；再补一条 `scores == sorted(scores, reverse=True)` 兜住单调性
+    2. `test_add_length_mismatch_raises` —— 2 个 chunk + 1 个 vector → `ValueError(match="数量不一致")`，并断言 `len(store) == 0`（抓「先 extend 再校验」，会留下半条数据且不报错）
+    3. `test_add_dim_mismatch_raises` —— 先 add 二维再 add 三维 → `ValueError(match="维度不一致")`，并断言 `len(store) == 1`、原数据仍能检索（**抓「先 vstack 再校验」**：抛错时矩阵已被拼成 `(2,3)`，状态脏了但没报错）
+    4. `test_search_on_empty_returns_empty` —— 空库 `search` 返回 `[]`；空库 `_dim == 0`，所以这条同时守「提前返回必须在维度校验之前」
+    5. `test_top_k_larger_than_size` —— 3 条数据 `top_k=5` → 返回 3 条且顺序不变（`[:top_k]` 的切片语义；弱测试，属回归保险，不追求它能抓 bug）
+  - 用 `match=` 而非裸 `pytest.raises(ValueError)`：删掉校验后代码可能崩在 `np.asarray` 上抛别的 `ValueError`，只判类型区分不出「有没有校验」
+  - **首次跑红 2 条，是期望值错不是代码错**：实际 `['A','C','B']`、期望写成了 `['A','B','C']`。手算点积 A=1.0 / C=0.7 / B=0.0，实际顺序才对；判断链照旧「实际值是否合理 → 回看实现有没有对应处理 → 再决定改哪边」
+  - **未覆盖（可补）**：① `add` 累积成功的路径——唯一走到 `np.vstack` 的用例在校验阶段就抛了，「第二批拼进矩阵后行仍与 chunk 对齐」零覆盖；补 `add([A]) + add([B,C])` 后断言 `["A","C","B"]`，把 `vstack` 参数顺序调反才会红 ② 非空库 `top_k=0` → `[]`
+  - 遗留小瑕疵：`test_add_length_mismath_raise` 名字里 `mismath` / `raise` 是笔误（应为 `mismatch` / `raises`）；`CHUNK_B` 与 `CHUNK_C` 的 `line_start` 都是 10（当前只用 `heading` 区分，改 C 为 20 更省未来的事）
 - **遗留问题（不阻塞进 Phase 4）**：
   1. `/clear` 只清内存不清库，清完继续聊会接着原 `seq` 往后排；建议改成「顺带 `create_session` 换新会话」
   2. `load_session` 名字与返回值（`list[Message]`）不匹配，将来加「读会话元信息」时统一改名
@@ -268,6 +278,9 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 - **`for piece in ...:` 循环体里却用 `body`**：变量名相近时极易写错，表现是「块数正确、`ruff` 干净、不报错，但每块内容完全一样且都超长」。抓它的唯一办法是**给输出加一条不变量断言**（每块长度 ≤ 上限 / 块内容不重复），而不是靠眼睛扫一遍。同理 `max_char` / `max_chars` 这类单复数差异也属于同一类
 - **条件表达式只改了一个分支**：`f"{heading}\n{piece}" if heading else body` —— 主分支从 `body` 改成 `piece` 了，`else` 分支还留着 `body`。因为「无标题块」在真实文档里几乎不出现（`DEVLOG.md` 顶部有 `# 开发日志`，栈永远非空），跑 `dump_chunks.py` 完全看不出来。**改三元表达式时，两个分支都要逐个确认**；这类 bug 只能靠专门构造「无标题 + 超长」的测试来抓
 - **测试红了，先分清是代码错还是期望值错**：判断链是「实际值是否合理 → 回看实现里有没有对应的处理 → 再决定改哪边」。实测踩过的例子：期望 `"Day4\n- 今天没做什么\n"`，实际 `"Day4\n- 今天没做什么"`——因为 `flush()` 里 `body` 过了 `.strip()`，**实际值才是对的**，该改的是期望值。反过来看 `assert [1] == [1,2,3]` 那种，实际值明显是半成品，那才是代码错
+- **`np.float32` 算出来的分数不能用 `==` 比**：`float(np.float32(0.7))` 是 `0.699999988079071`，`assert score == 0.7` 必红且看不出原因。凡是经过 numpy 的浮点都要 `pytest.approx`（测试里 C=`[0.7,0.7]` 正好撞上）
+- **IDE 的红波浪不等于仓库工具链的红**：IDE 报 `np.vstack` 重载不匹配、实参类型 `list[NDArray | _Array2D[floating[_32Bit]]]`，而 `uv run --with basedpyright basedpyright`（1.40.2，numpy 2.2~2.5.5 全试过）是 **0 error**——两边解析的 numpy stub 不是同一份（`_Array2D` 是形状特化别名，只在某些版本出现）。判断顺序：先确认 IDE 解释器指向 `.venv\Scripts\python.exe`，再用命令行版复核，别照着 IDE 的红波浪改代码
+- **`np.vstack([a, b])` 的元素类型不一致时泛型推不出来**：`vstack[ScalarT](tup: Sequence[_ArrayLike[ScalarT]])` 要求整个列表的标量类型统一。给 `matrix` 加显式标注 `NDArray[np.float32]`（与 `_matrix` 同型）后列表变成单一类型，报错消失；这也是「显式标注宽类型」比 `# type: ignore` 好的地方
 
 ## 9. 已知的坑
 
