@@ -1,6 +1,6 @@
 """打印某个 Markdown 文件的切块结果, 用来肉眼检查切块质量。"""
 
-import sys 
+import sys
 from pathlib import Path
 
 from yiagent.core.chunking import DEFAULT_MAX_CHARS, split_markdown
@@ -21,5 +21,7 @@ def main() -> None:
         f"\n平均 {sum(lengths) // len(lengths)} 字, 最长 {max(lengths)} 字, "
         f"超 {DEFAULT_MAX_CHARS} 的 {sum(1 for n in lengths if n > DEFAULT_MAX_CHARS)} 块"
     )
+
+
 if __name__ == "__main__":
     main()

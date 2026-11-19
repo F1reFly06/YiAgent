@@ -51,7 +51,6 @@ def _split_long(body: str, max_chars: int) -> list[str]:
     return pieces
 
 
-
 def split_markdown(text: str, source: str, max_chars: int = DEFAULT_MAX_CHARS) -> list[Chunk]:
     """按 Markdown 标题层级把文本切成 Chunk
 
@@ -79,7 +78,7 @@ def split_markdown(text: str, source: str, max_chars: int = DEFAULT_MAX_CHARS) -
                     text=f"{heading}\n{piece}" if heading else piece,
                     source=source,
                     heading=heading,
-                    line_start=heading_line, # 切出的多块共享标题行号
+                    line_start=heading_line,  # 切出的多块共享标题行号
                 )
             )
 

@@ -31,7 +31,7 @@ class VectorStore:
         if not chunks:
             return
 
-        matrix = np.asarray(vectors, dtype=np.float32)
+        matrix: NDArray[np.float32] = np.asarray(vectors, dtype=np.float32)
         if matrix.ndim != 2:
             raise ValueError(f"vectors 必须是二维, 实际形状 {matrix.shape}")
 
