@@ -185,3 +185,7 @@
 ## 2026-11-19 Day21 继续Phase 4
 ### 做了
 - 写了`tests/test_vector_store.py`测试脚本, 用于测试vector_store.py的功能。
+
+## 2026-11-23 Day22 继续Phase 4
+### 做了
+- 写了`src/yiagent/providers/embedding.py`, 用于发送embedding的网络层请求, 是真正用来连接embedding模型, 将切片向量化的地方。

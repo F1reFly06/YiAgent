@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-11-19 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / A4 / B1 完成（A4 测试已补齐，全仓 17 passed），下一步 `core/embedding.py` + A5 端到端 spike
+> 最后更新：2026-11-23 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / A4 / B1 完成（全仓 17 passed），A5 前置 `providers/embedding.py` 已就绪，下一步 A5 端到端 spike
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -31,6 +31,7 @@
 | Agent 框架 | 不选，手写工具循环 | 求职要能讲清 loop 内部；框架会把这层黑盒化 |
 | 对话模型 | DeepSeek `deepseek-chat`（OpenAI 兼容协议） | 便宜、国内直连、便于跑评测 |
 | Embedding | 硅基流动 `BAAI/bge-m3`（1024 维） | DeepSeek 没有 embedding 接口，必须另一家 |
+| Embedding 代码位置 | `providers/embedding.py`（不放 `core/`） | 网络请求一律留在 `providers/`；`core/` 保持纯逻辑，不用 key 也能 import 和测试。代价是 `core/` 里看不到“文本→向量”这一步，要在目录地图里写明 |
 | 向量检索 | 第一版 numpy 暴力 cosine | 千级 chunk 够用，不装重依赖，也便于理解原理 |
 | 向量库（后续） | 视情况换 chromadb | `core/vector_store.py`（拟）只有 add/search 两个方法，换库只改一个文件 |
 | 会话持久化 | SQLite（Phase 3 引入） | 比 JSON 文件能讲事务和索引，比 Postgres 轻 |
@@ -60,7 +61,7 @@
 | 2 | **工具调用循环 ★** | ✅ 已完成（2026-11-04） |
 | 3 | 会话与持久化 | ✅ 已完成（2026-11-05 ~ 11-09） |
 | 3.5 | **过渡：pytest 测试持久化层** | ✅ 已完成（2026-11-11，6 passed / 0.13s；不计入 Phase，见第 4 节决策） |
-| 4 | RAG 入库与检索 | 🔨 进行中（A1 ✅ / A2 ✅ / A4 ✅ / B1 ✅，共 11 小步，见第 8 节） |
+| 4 | RAG 入库与检索 | 🔨 进行中（A1 ✅ / A2 ✅ / A4 ✅ / B1 ✅，A5 前置 `providers/embedding.py` ✅；共 11 小步，见第 8 节） |
 | 5 | **检索变成工具 ★** | 未开始 |
 | 6 | 评测集 | 未开始 |
 | 7 | Web + 部署 | 未开始 |
@@ -101,7 +102,8 @@ src/yiagent/core/tools.py     Tool 数据结构 + 两个示例工具 + TOOLS 注
 src/yiagent/core/prompt.py    load_system_prompt()，importlib.resources + lru_cache
 src/yiagent/core/session_store.py  会话持久化：_SCHEMA（sessions / messages）+ _connect / init_db / create_session / latest_session / append_message / load_session；**全项目唯一写 SQL 的地方**
 src/yiagent/prompts/system.md 系统提示词（人设 / 能力边界 / 风格 / 不编造）
-src/yiagent/providers/openai_compat.py  OpenAIChatProvider：唯一碰网络的地方，产出事件流
+src/yiagent/providers/openai_compat.py  OpenAIChatProvider：chat 方向唯一碰网络的地方，产出事件流
+src/yiagent/providers/embedding.py  embedding 方向的网络层：embed(texts) -> list[list[float]]（惰性 client + 分批 32 + 条数/维度校验 + 不吞异常）
 src/yiagent/cli/main.py       typer + rich 入口：main(建表/续接会话/载历史) + _chat_loop / _run_turn(带 session_id, 结束写库) / _save_new_messages / _stream_reply
 src/yiagent/core/chunking.py  切块：Chunk 数据契约(frozen, 4 字段) + split_markdown(标题栈 + 代码块保护 + 孤立#过滤 + 超长切分)
 src/yiagent/core/vector_store.py  内存向量库：SearchHit + VectorStore(_matrix/_chunks/_dim + add 四关校验 + search 暴力点积)
@@ -123,8 +125,8 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 
 ## 8. 下次接着干的入口
 
-- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-19）。已完成：embedding 链路验证、A1 依赖与契约、A2 切块 v1、B1 切块打磨 + 测试护栏（`test_chunking.py` 6 条）、A4 `VectorStore` 内存版 + 测试护栏（`test_vector_store.py` 5 条）；全仓 **17 passed**
-- **下次第一件事**：① 写 `core/embedding.py`（`embed(texts) -> list[list[float]]`，批大小 32 + 顺序严格对应 + 维度校验 + 长度校验）② 跑 A5 端到端 spike（`docs/DEVLOG.md` → 切块 → 真向量 → `store.search("怎么写测试")` 看 top-3）③ 收尾可选：补 `add` 累积路径、非空库 `top_k=0` 两条用例；进 B2（L2 归一化 + `min_score`）
+- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-23）。已完成：embedding 链路验证、A1 依赖与契约、A2 切块 v1、B1 切块打磨 + 测试护栏（`test_chunking.py` 6 条）、A4 `VectorStore` 内存版 + 测试护栏（`test_vector_store.py` 5 条）、A5 前置 `providers/embedding.py`；全仓 **17 passed**
+- **下次第一件事**：① 写 `scripts/spike_e2e.py` 跑 A5（`docs/DEVLOG.md` → `split_markdown` → `embed` → `store.add` → `embed("怎么写测试")[0]` → 打印 top-3 的 heading / line_start / score / 正文前 80 字）② 人眼判命中，顺便记下真实语料的分数区间，为 B2 的 `min_score` 提供依据 ③ 进 B2（L2 归一化 + `min_score`）；可选收尾：补 `add` 累积路径、非空库 `top_k=0` 两条用例
 - **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
   - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
   - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
@@ -171,7 +173,7 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   - `TOOL_CALLS` 必须显式标注 `list[dict[str, object]]`：字面量会被推断成更窄的 `list[dict[str, str | dict[str, str]]]`，而 `list` / `dict` 都是不变的，与 `Message.tool_calls` 的声明不兼容（basedpyright 报错，运行时无影响）
   - **本批未覆盖**：`MAX_TOOL_ROUNDS` 超限、`_run_turn` 的 `except → del messages[start:]` 回滚——这两条要伪造 `LLMProvider`（`stream()` 按剧本吐 `ToolCall` 事件）才测得到，留给后续
 - **Phase 4 拆步（A 打通 → B 做对 → C 可用，共 11 小步）**：
-  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（2026-11-16 验收）/ A3 embedding 链路 ✅（探针）/ A4 `VectorStore` 内存版 ✅（2026-11-18 代码 + 2026-11-19 测试护栏）/ A5 端到端 spike 脚本 ← 下一步（前置 `core/embedding.py`）
+  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（2026-11-16 验收）/ A3 embedding 链路 ✅（探针）/ A4 `VectorStore` 内存版 ✅（2026-11-18 代码 + 2026-11-19 测试护栏）/ A5 端到端 spike 脚本 ← 下一步（前置 `providers/embedding.py` ✅ 2026-11-23）
   - **B 做对**：B1 切块 v2 ✅（2026-11-16，代码块保护 + 孤立 `#` 过滤 + 超长块按段落累积 + 硬切）/ B2 L2 归一化 + `min_score` / B3 `save` / `load` + `meta.json` 校验 `dim` 与 `model`
   - **C 可用**：C1 `indexer.py` 扫目录 + `build_index` / C2 `yiagent index` 子命令（**注意：Typer 加第二个 command 后裸跑会变 help 页，必须先把 `main` 改成 `@app.callback(invoke_without_command=True)`**）/ C3 真实语料 10 个问题看 top-3 命中率（同时是 Phase 5 的检索基线）
 - **Phase 4 进度：A1 ✅ / A2 ✅ / B1 ✅（2026-11-12 ~ 11-16）**：
@@ -225,6 +227,18 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   - **首次跑红 2 条，是期望值错不是代码错**：实际 `['A','C','B']`、期望写成了 `['A','B','C']`。手算点积 A=1.0 / C=0.7 / B=0.0，实际顺序才对；判断链照旧「实际值是否合理 → 回看实现有没有对应处理 → 再决定改哪边」
   - **未覆盖（可补）**：① `add` 累积成功的路径——唯一走到 `np.vstack` 的用例在校验阶段就抛了，「第二批拼进矩阵后行仍与 chunk 对齐」零覆盖；补 `add([A]) + add([B,C])` 后断言 `["A","C","B"]`，把 `vstack` 参数顺序调反才会红 ② 非空库 `top_k=0` → `[]`
   - 遗留小瑕疵：`test_add_length_mismath_raise` 名字里 `mismath` / `raise` 是笔误（应为 `mismatch` / `raises`）；`CHUNK_B` 与 `CHUNK_C` 的 `line_start` 都是 10（当前只用 `heading` 区分，改 C 为 20 更省未来的事）
+- **A5 前置完成：`providers/embedding.py`（2026-11-23）**：
+  - 契约：`embed(texts: list[str]) -> list[list[float]]`，**第 i 个向量对应 `texts[i]`**，顺序是契约的一部分（破了不报错，只是「B 的内容配上 A 的向量」）
+  - 放 `providers/` 不放 `core/`：网络只出现在 `providers/`，`core/` 保持纯逻辑、离线可测（见第 4 节决策）
+  - `BATCH_SIZE = 32`：由 L0 限流决定（RPM 2000 / TPM 500,000，单条 ≤ 8K token；切块 800 字符 ≈ 1200 token，一批约 3.8 万 token）；常量不做成参数，调用方没有按场景改它的理由
+  - `_client: OpenAI | None` + `_get_client()` 惰性 + `global`：`OpenAI(...)` 会建连接池，立刻执行就等于 import 本模块就付这份开销；不做成单例类，因为本模块无状态
+  - 循环用 `range(0, len(texts), BATCH_SIZE)` + 切片：最后一批天然短，切片越界不报错；`enumerate(start=1)` 只服务报错文案（「第 2 批」能直接定位 `texts[32:64]`）
+  - **三处校验**：① 批内 `len(response.data) == len(batch)`——少一条会让后续所有向量整体错位一格，放 append 之前 ② 逐条 `len(vector) == settings.dim`——换模型忘改 `dim` 时立刻炸（比默默存 768 维安全） ③ 末尾 `len(vectors) == len(texts)`——唯一声明「输出条数 = 输入条数」的地方，将来有人 `except: continue` 跳过失败批次时只有它报警
+  - 顺序取 `response.data` 的自然顺序，**不按 `Embedding.index` 排序**：`index` 只是回显，自然顺序才是协议承诺
+  - `if not texts: return []`：`input=[]` 大概率 400，且无意义往返
+  - 无 `try/except`：401 / 400 / 429 原样抛出，否则 A5 只会看到「检索质量差」而非真实原因；重试/退避留给 C 阶段或不做
+  - **不做 L2 归一化**：留给 B2 与 `search` 一起改（否则 `min_score` 阈值失去可比性，且换模型时会误以为已处理）
+  - 网络层不写正式测试：靠 A5 真机 spike 验证（`embed([]) == []`、单条结果与多条结果的第一条 `approx` 相等——后者能抓批边界错位，只验 `len` 验不出来）
 - **遗留问题（不阻塞进 Phase 4）**：
   1. `/clear` 只清内存不清库，清完继续聊会接着原 `seq` 往后排；建议改成「顺带 `create_session` 换新会话」
   2. `load_session` 名字与返回值（`list[Message]`）不匹配，将来加「读会话元信息」时统一改名
