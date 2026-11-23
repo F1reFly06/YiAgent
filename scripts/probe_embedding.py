@@ -4,7 +4,6 @@ from openai import OpenAI
 
 from yiagent.config import embeddings_settings as settings
 
-
 raw = settings.api_key.get_secret_value()
 print("key 长度:", len(raw))
 print("key 前6:", repr(raw[:6]))
