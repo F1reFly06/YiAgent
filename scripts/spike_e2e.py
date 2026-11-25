@@ -39,7 +39,7 @@ def main() -> None:
         hits = store.search(embed([query])[0], top_k=TOP_K)
         print(f"查询: {query!r}")
         for rank, hit in enumerate(hits, start=1):
-            print(f" #{rank} {hit.score: 4f} {hit.chunk.heading} (L{hit.chunk.line_start})")
+            print(f" #{rank} {hit.score: .4f} {hit.chunk.heading} (L{hit.chunk.line_start})")
             print(f"     {preview(hit.chunk.text, hit.chunk.heading)}")
         print()
 
