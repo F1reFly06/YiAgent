@@ -189,3 +189,7 @@
 ## 2026-11-23 Day22 继续Phase 4
 ### 做了
 - 写了`src/yiagent/providers/embedding.py`, 用于发送embedding的网络层请求, 是真正用来连接embedding模型, 将切片向量化的地方。
+
+## 2026-11-25 Day23 继续Phase 4
+### 做了
+- 写了`scripts/spike_e2e.py`, 这是测试完整检索流程的最小版测试文件, 只覆盖单文件, 单进程, 内存中。

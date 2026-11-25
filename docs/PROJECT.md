@@ -1,6 +1,6 @@
 # YiAgent 项目总览
 
-> 最后更新：2026-11-23 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A1 / A2 / A4 / B1 完成（全仓 17 passed），A5 前置 `providers/embedding.py` 已就绪，下一步 A5 端到端 spike
+> 最后更新：2026-11-25 · 当前阶段：**Phase 4（RAG 入库与检索）进行中** —— A 组（最小闭环）全部完成：A1 / A2 / A4 / A5 打通，`DEVLOG.md` 真实语料 top-3 命中 2/3、噪声水位 0.369；下一步 B2（L2 归一化 + `min_score`）
 > 每次开工前读这份，收工后更新第 8、9 节。
 
 ## 1. 一句话是什么
@@ -32,6 +32,7 @@
 | 对话模型 | DeepSeek `deepseek-chat`（OpenAI 兼容协议） | 便宜、国内直连、便于跑评测 |
 | Embedding | 硅基流动 `BAAI/bge-m3`（1024 维） | DeepSeek 没有 embedding 接口，必须另一家 |
 | Embedding 代码位置 | `providers/embedding.py`（不放 `core/`） | 网络请求一律留在 `providers/`；`core/` 保持纯逻辑，不用 key 也能 import 和测试。代价是 `core/` 里看不到“文本→向量”这一步，要在目录地图里写明 |
+| 检索返回条数 | `knowledge_search` 默认 **top-5**，不是 top-1 | A5 实测：真实语料的头部三条分数只差 1.5%（0.601 / 0.591 / 0.586），**真正最相关的那条排在第 2**。只给模型一条会把次相关当答案；给 3~5 条让它自己挑，才符合 agentic RAG |
 | 向量检索 | 第一版 numpy 暴力 cosine | 千级 chunk 够用，不装重依赖，也便于理解原理 |
 | 向量库（后续） | 视情况换 chromadb | `core/vector_store.py`（拟）只有 add/search 两个方法，换库只改一个文件 |
 | 会话持久化 | SQLite（Phase 3 引入） | 比 JSON 文件能讲事务和索引，比 Postgres 轻 |
@@ -61,7 +62,7 @@
 | 2 | **工具调用循环 ★** | ✅ 已完成（2026-11-04） |
 | 3 | 会话与持久化 | ✅ 已完成（2026-11-05 ~ 11-09） |
 | 3.5 | **过渡：pytest 测试持久化层** | ✅ 已完成（2026-11-11，6 passed / 0.13s；不计入 Phase，见第 4 节决策） |
-| 4 | RAG 入库与检索 | 🔨 进行中（A1 ✅ / A2 ✅ / A4 ✅ / B1 ✅，A5 前置 `providers/embedding.py` ✅；共 11 小步，见第 8 节） |
+| 4 | RAG 入库与检索 | 🔨 进行中（**A 组全部 ✅**：A1 / A2 / A3 / A4 / A5；B1 ✅；下一步 B2；共 11 小步，见第 8 节） |
 | 5 | **检索变成工具 ★** | 未开始 |
 | 6 | 评测集 | 未开始 |
 | 7 | Web + 部署 | 未开始 |
@@ -114,6 +115,7 @@ tests/test_vector_store.py   向量库测试：5 条（排序+分数归属 / 数
 scripts/probe_embedding.py  embedding 链路自检：key 长度 / 维度 / 相关对 vs 无关对（对照组）
 scripts/dump_chunks.py      切块检视器：剥掉 heading 前缀打印正文 + 每块字数 + 长度分布（不断言）
 scripts/spike_vector.py     向量库手工冒烟：3 条假向量验排序与条数，不调网络
+scripts/spike_e2e.py        端到端 spike：真笔记(DEVLOG.md) → 切块 → 真向量 → 入库 → 两条查询(相关 + 噪声基线) 打印 top-3；只打印不断言，是 A5 的验收工具
 ```
 
 Phase 2 完成（2026-11-04）：工具调用闭环打通。provider 侧 `tools=` + 按 `tc.index` 分桶累积 `tool_calls` + 循环外先 `ToolCall` 后 `Done`；CLI 侧 `_run_turn` 工具轮次循环（开关是 `finish_reason == "tool_calls"` **且** `tool_calls` 非空）、三段式历史、`MAX_TOOL_ROUNDS = 5`、异常时 `del messages[start:]` 回滚。
@@ -125,8 +127,8 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
 
 ## 8. 下次接着干的入口
 
-- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-23）。已完成：embedding 链路验证、A1 依赖与契约、A2 切块 v1、B1 切块打磨 + 测试护栏（`test_chunking.py` 6 条）、A4 `VectorStore` 内存版 + 测试护栏（`test_vector_store.py` 5 条）、A5 前置 `providers/embedding.py`；全仓 **17 passed**
-- **下次第一件事**：① 写 `scripts/spike_e2e.py` 跑 A5（`docs/DEVLOG.md` → `split_markdown` → `embed` → `store.add` → `embed("怎么写测试")[0]` → 打印 top-3 的 heading / line_start / score / 正文前 80 字）② 人眼判命中，顺便记下真实语料的分数区间，为 B2 的 `min_score` 提供依据 ③ 进 B2（L2 归一化 + `min_score`）；可选收尾：补 `add` 累积路径、非空库 `top_k=0` 两条用例
+- **当前在**：**Phase 4 进行中**（2026-11-12 ~ 11-25）。**A 组（最小闭环）全部完成**：embedding 链路验证 / A1 依赖与契约 / A2 切块 v1 / A4 `VectorStore` + 测试 / A5 端到端 spike；外围还有 B1 切块打磨（`test_chunking.py` 6 条）与 `providers/embedding.py`；全仓 **17 passed**
+- **下次第一件事**：**B2 —— L2 归一化 + `min_score`**：在 `VectorStore` 侧把 `_matrix` 每行与 query 都归一化（或存时就归一），`search` 增加 `min_score: float = 0.0` 参数过滤低分命中；改完**必须重跑 `scripts/spike_e2e.py`** 确认分数分布与阈值（当前裸点积的实测值见下条，归一化后要重新标定）。之后 B3（`save` / `load` + `meta.json` 校验 dim 与 model）
 - **Phase 1 已完成（2026-10-31）**：`uv run yiagent` 可流式对话，支持多轮历史、`/clear`、`/exit`、Ctrl+C 与 API 异常兜底；`ruff check` 0 错误
   - `config.py` 单例 / `core/message.py` 数据契约 / `core/prompt.py` 加载 prompt / `prompts/system.md`
   - `cli/main.py`：三层 —— `main`（装配）/ `_chat_loop`（轮次 + 历史）/ `_stream_reply`（打印 + 聚合，只读 messages）
@@ -173,7 +175,7 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   - `TOOL_CALLS` 必须显式标注 `list[dict[str, object]]`：字面量会被推断成更窄的 `list[dict[str, str | dict[str, str]]]`，而 `list` / `dict` 都是不变的，与 `Message.tool_calls` 的声明不兼容（basedpyright 报错，运行时无影响）
   - **本批未覆盖**：`MAX_TOOL_ROUNDS` 超限、`_run_turn` 的 `except → del messages[start:]` 回滚——这两条要伪造 `LLMProvider`（`stream()` 按剧本吐 `ToolCall` 事件）才测得到，留给后续
 - **Phase 4 拆步（A 打通 → B 做对 → C 可用，共 11 小步）**：
-  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（2026-11-16 验收）/ A3 embedding 链路 ✅（探针）/ A4 `VectorStore` 内存版 ✅（2026-11-18 代码 + 2026-11-19 测试护栏）/ A5 端到端 spike 脚本 ← 下一步（前置 `providers/embedding.py` ✅ 2026-11-23）
+  - **A 最小闭环**：A1 依赖与契约 ✅ / A2 切块 v1 ✅（2026-11-16 验收）/ A3 embedding 链路 ✅（探针）/ A4 `VectorStore` 内存版 ✅（2026-11-18 代码 + 2026-11-19 测试护栏）/ **A5 端到端 spike ✅（2026-11-25，`scripts/spike_e2e.py`，真语料 top-3 命中 2/3）** —— A 组到此闭环
   - **B 做对**：B1 切块 v2 ✅（2026-11-16，代码块保护 + 孤立 `#` 过滤 + 超长块按段落累积 + 硬切）/ B2 L2 归一化 + `min_score` / B3 `save` / `load` + `meta.json` 校验 `dim` 与 `model`
   - **C 可用**：C1 `indexer.py` 扫目录 + `build_index` / C2 `yiagent index` 子命令（**注意：Typer 加第二个 command 后裸跑会变 help 页，必须先把 `main` 改成 `@app.callback(invoke_without_command=True)`**）/ C3 真实语料 10 个问题看 top-3 命中率（同时是 Phase 5 的检索基线）
 - **Phase 4 进度：A1 ✅ / A2 ✅ / B1 ✅（2026-11-12 ~ 11-16）**：
@@ -239,6 +241,17 @@ Phase 3.5 完成（2026-11-11）：持久化层补上测试护栏。`tests/test_
   - 无 `try/except`：401 / 400 / 429 原样抛出，否则 A5 只会看到「检索质量差」而非真实原因；重试/退避留给 C 阶段或不做
   - **不做 L2 归一化**：留给 B2 与 `search` 一起改（否则 `min_score` 阈值失去可比性，且换模型时会误以为已处理）
   - 网络层不写正式测试：靠 A5 真机 spike 验证（`embed([]) == []`、单条结果与多条结果的第一条 `approx` 相等——后者能抓批边界错位，只验 `len` 验不出来）
+- **A5 完成：端到端 spike（2026-11-25，`scripts/spike_e2e.py`）**：
+  - 链路：读 `docs/DEVLOG.md` → `split_markdown` → `embed([c.text ...])` → `store.add` → 两条查询（相关 + 噪声基线）→ 打印 top-3 的 score / heading / `line_start` / 正文前 80 字（剥掉 heading 前缀并压成单行）
+  - **33 块 / 33 向量 / 库内 33**，三个数一致；且 33 > `BATCH_SIZE(32)` → 真的分了两批（32 + 1），批边界顺带被验掉：heading 与正文一一对应，没有整体错位一格
+  - 查询「怎么写测试」top-3：**0.6008** Day5「想写的记录」（ruff 命令，次相关）/ **0.5914** Day15 `test_session_store.py` ✔ / **0.5860** Day19 `test_chunking.py` ✔ → **命中 2/3**
+  - 查询「红烧肉要小火慢炖两个小时」top-3：**0.3687 / 0.3665 / 0.3651** —— 噪声天花板 0.3687，且三条几乎贴在一起
+  - **发现 1：分数被挤压**。相关三条首尾只差 0.015，真正最相关的 #2 排到了次相关的 #1 后面（差 0.009）。原因是语料同质（同一个人的同一个项目的流水账），**不是切块问题**——不要为此去调 `max_chars`；由此定下「检索返回 top-5」（见第 4 节决策表）
+  - **发现 2：阈值有充足空间**。噪声 ≤ 0.3687、相关 ≥ 0.5860，中间空了 0.217 → `min_score` 初值取 **0.45**（距噪声 +0.08、距相关 −0.14）。B2 加 L2 归一化后分数绝对值会变，**必须重跑本脚本重新标定**
+  - **发现 3：「平坦」是低置信信号**。噪声三条标准差极小，相关三条虽然也挤压但整体抬高了 0.23 → 将来可以考虑「top1 与 topk 的差距 < 某值即视为命中不可信」，现在只记录、不实现
+  - 明确不做：不为 #1 排错改切块；不加查询改写/扩展（留到 Phase 6 评测之后）
+  - 可选加深（未做）：`TOP_K` 临时改 10 跑一次看召回（第 4~10 名里还有几条相关），这是 C3「10 个问题看命中率」的设计依据
+  - 小瑕疵：第 42 行 `{hit.score: 4f}` 少了 `.`（本意 `.4f`，目前靠 `f` 默认 6 位小数没坏）；`ruff format` 会重排 docstring 首行空格与行内注释前的空格
 - **遗留问题（不阻塞进 Phase 4）**：
   1. `/clear` 只清内存不清库，清完继续聊会接着原 `seq` 往后排；建议改成「顺带 `create_session` 换新会话」
   2. `load_session` 名字与返回值（`list[Message]`）不匹配，将来加「读会话元信息」时统一改名
